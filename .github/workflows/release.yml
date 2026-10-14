@@ -1,0 +1,88 @@
+name: Release
+on:
+  push:
+    tags: ['v[0-9]*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      QMAKE: qmake
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          components: rustfmt, clippy
+      - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
+        with:
+          version: 6.11.2
+          modules: qtwebengine qtwebchannel qtpositioning qtshadertools qtsvg
+          cache: true
+      - name: Validate release version
+        run: test "$GITHUB_REF_NAME" = "v$(node tools/project.ts)"
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: cargo fmt --check
+      - run: cargo test --locked
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: npm run test:native
+      - run: brew install cargo-about
+      - run: npm run package:mac -- --ad-hoc
+      - run: npm run release:mac
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: wisp-macos-${{ matrix.arch }}
+          path: |
+            dist/Wisp-*.zip
+            dist/Wisp-*.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: wisp-macos-*
+          merge-multiple: true
+          path: artifacts
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cd artifacts
+          sha256sum --check ./*.sha256
+          cat > release-notes.md <<'NOTES'
+          Wisp for macOS 14+, with separate Apple Silicon and Intel downloads.
+
+          These community builds are ad hoc signed and are not Apple notarized.
+          The source and build instructions are available in the repository.
+          NOTES
+          gh release create "$RELEASE_TAG" ./*.zip ./*.sha256 \
+            --verify-tag --draft --title "Wisp $RELEASE_TAG" --notes-file release-notes.md

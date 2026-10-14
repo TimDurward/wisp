@@ -1,0 +1,6 @@
+node_modules/
+web/dist/
+target/
+dist/
+package-lock.json
+.wisp-signing/

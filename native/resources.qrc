@@ -1,0 +1,29 @@
+<RCC>
+<qresource prefix="/wisp">
+<file alias="web/wisp.js">../web/dist/wisp.js</file>
+<file alias="qml/Main.qml">../qml/Main.qml</file>
+<file alias="qml/components/Header.qml">../qml/components/Header.qml</file>
+<file alias="qml/components/PanelScrollView.qml">../qml/components/PanelScrollView.qml</file>
+<file alias="qml/components/PreferenceSwitch.qml">../qml/components/PreferenceSwitch.qml</file>
+<file alias="qml/components/RuleEditor.qml">../qml/components/RuleEditor.qml</file>
+<file alias="qml/components/RulesDialog.qml">../qml/components/RulesDialog.qml</file>
+<file alias="qml/components/SectionLabel.qml">../qml/components/SectionLabel.qml</file>
+<file alias="qml/components/SettingsCard.qml">../qml/components/SettingsCard.qml</file>
+<file alias="qml/components/SettingsDialog.qml">../qml/components/SettingsDialog.qml</file>
+<file alias="qml/components/StatusBar.qml">../qml/components/StatusBar.qml</file>
+<file alias="qml/components/WhatsAppView.qml">../qml/components/WhatsAppView.qml</file>
+<file alias="qml/pages/AccountPage.qml">../qml/pages/AccountPage.qml</file>
+<file alias="qml/pages/ChatPage.qml">../qml/pages/ChatPage.qml</file>
+<file alias="qml/pages/LanguagesPage.qml">../qml/pages/LanguagesPage.qml</file>
+<file alias="qml/pages/StylePage.qml">../qml/pages/StylePage.qml</file>
+<file alias="qml/services/DraftEditor.qml">../qml/services/DraftEditor.qml</file>
+<file alias="qml/services/Session.qml">../qml/services/Session.qml</file>
+<file alias="qml/theme/Tokens.qml">../qml/theme/Tokens.qml</file>
+<file alias="qml/theme/WispStyle.qml">../qml/theme/WispStyle.qml</file>
+<file alias="qml/theme/qmldir">../qml/theme/qmldir</file>
+<file alias="assets/icons/sidebar.svg">../assets/icons/sidebar.svg</file>
+<file alias="assets/icons/settings.svg">../assets/icons/settings.svg</file>
+<file alias="assets/icons/tune.svg">../assets/icons/tune.svg</file>
+<file alias="assets/wisp.svg">../assets/wisp.svg</file>
+</qresource>
+</RCC>

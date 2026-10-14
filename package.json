@@ -1,0 +1,35 @@
+{
+  "name": "wisp",
+  "private": true,
+  "scripts": {
+    "build:web": "node tools/build-web.mjs",
+    "check:web": "tsc -p web/tsconfig.json",
+    "test": "npm run build:web -- --tests && vitest run",
+    "test:browser": "npm run build:web && playwright test",
+    "test:native": "npm run build:web -- --tests && node tools/test-native.mjs",
+    "package:mac": "node tools/macos/package.ts",
+    "format": "prettier --write web tools *.ts *.json README.md docs/*.md",
+    "format:check": "prettier --check web tools *.ts *.json README.md docs/*.md",
+    "check": "npm run check:web && npm run check:tools && npm run check:tests && npm run format:check",
+    "check:tools": "tsc -p tools/tsconfig.json",
+    "test:signing": "WISP_TEST_SIGNING=1 vitest run tools/tests/signing.test.ts",
+    "check:tests": "tsc -p web/tsconfig.tests.json",
+    "release:mac": "node tools/macos/archive.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@sinonjs/fake-timers": "^15.4.0",
+    "@types/jsdom": "^27.0.0",
+    "@types/node": "^24.19.2",
+    "@types/sinonjs__fake-timers": "^15.0.1",
+    "esbuild": "^0.28.2",
+    "jsdom": "27.0.1",
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  }
+}
