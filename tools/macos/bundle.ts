@@ -24,6 +24,13 @@ export function copyFramework(source: string, destination: string) {
     filter: (source) => path.basename(source) !== 'Headers' && !source.endsWith('.prl'),
   });
 }
+export function pruneSqlDrivers(bundle: string) {
+  // macdeployqt copies all SQL drivers, including unused drivers with external server libraries.
+  const directory = path.join(bundle, 'Contents/PlugIns/sqldrivers');
+  if (!fs.existsSync(directory)) return;
+  for (const name of fs.readdirSync(directory))
+    if (name !== 'libqsqlite.dylib') fs.rmSync(path.join(directory, name), { recursive: true });
+}
 export function binaries(bundle: string, directory = bundle): string[] {
   const found = new Set<string>();
   function visit(directory: string) {

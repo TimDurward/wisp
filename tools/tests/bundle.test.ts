@@ -3,7 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { binaries, copyFramework, dependencies, inside, relocate } from '../macos/bundle.ts';
+import {
+  binaries,
+  copyFramework,
+  dependencies,
+  inside,
+  pruneSqlDrivers,
+  relocate,
+} from '../macos/bundle.ts';
 import { run } from '../process.ts';
 test('otool parsing preserves spaces and framework paths', () => {
   expect(
@@ -25,6 +32,29 @@ describe('framework deployment', () => {
     fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wisp-framework-')));
   });
   afterEach(() => fs.rmSync(fixture, { recursive: true, force: true }));
+
+  test('keeps SQLite and other plugin families without optional server drivers', () => {
+    const bundle = path.join(fixture, 'Wisp.app');
+    const plugins = path.join(bundle, 'Contents/PlugIns');
+    const drivers = path.join(plugins, 'sqldrivers');
+    fs.mkdirSync(drivers, { recursive: true });
+    fs.mkdirSync(path.join(plugins, 'platforms'));
+    const sqlite = path.join(drivers, 'libqsqlite.dylib');
+    const cocoa = path.join(plugins, 'platforms/libqcocoa.dylib');
+    fs.writeFileSync(sqlite, 'SQLite fixture');
+    fs.writeFileSync(cocoa, 'Cocoa fixture');
+    for (const driver of ['mimer', 'odbc', 'psql', 'mysql'])
+      fs.writeFileSync(path.join(drivers, `libqsql${driver}.dylib`), 'unused driver');
+
+    pruneSqlDrivers(bundle);
+    pruneSqlDrivers(bundle);
+
+    expect(fs.readdirSync(drivers)).toEqual(['libqsqlite.dylib']);
+    expect(fs.readFileSync(sqlite, 'utf8')).toBe('SQLite fixture');
+    expect(fs.readFileSync(cocoa, 'utf8')).toBe('Cocoa fixture');
+    fs.rmSync(drivers, { recursive: true });
+    expect(() => pruneSqlDrivers(bundle)).not.toThrow();
+  });
 
   test('copies an SDK alias as a self-contained framework', () => {
     const framework = path.join(fixture, 'sdk/QtExample.framework');

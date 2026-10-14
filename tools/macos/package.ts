@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run } from '../process.ts';
-import { audit, relocate } from './bundle.ts';
+import { audit, pruneSqlDrivers, relocate } from './bundle.ts';
 import { sign } from './sign.ts';
 import { projectVersion } from '../project.ts';
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -90,6 +90,7 @@ try {
       ],
       { stdio: 'inherit' },
     );
+  pruneSqlDrivers(bundle);
   relocate(bundle, libraries);
   audit(bundle);
   sign(bundle, args.includes('--ad-hoc'));

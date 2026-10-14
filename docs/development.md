@@ -13,7 +13,7 @@ The desktop app uses Cargo and CXX-Qt. Cargo rebuilds the bundled web assets wit
 - `npm run test:native` — CMake, CTest, and Qt Test; offscreen fixtures
 - `cargo test --locked` and `cargo clippy --all-targets --locked -- -D warnings`
 
-Install the test browser once with `npx playwright install chromium`. Native tests require CMake and the same Qt installation as the app. Set `QMAKE` if the executable is not `qmake6`.
+Install the test browser once with `npx playwright install chromium`. Native tests require CMake and the same Qt installation as the app. Set `QMAKE` to the absolute path of the SDK's qmake executable.
 
 Tests never log in or send real messages. Browser tests exercise the production bundle with a native-channel test double. Qt tests verify native input, shortcuts, layout, and settings controls. Rust tests cover request validation, cancellation, identity, persistence, authentication claims, and stream completion.
 
@@ -52,7 +52,7 @@ On macOS, install Xcode Command Line Tools and Rust (rustup), then:
 ```sh
 brew install node@24 cmake qt
 export PATH="$(brew --prefix node@24)/bin:$PATH"
-export QMAKE=qmake6
+export QMAKE="$(command -v qmake6)"
 npm ci
 cargo run --locked
 ```
