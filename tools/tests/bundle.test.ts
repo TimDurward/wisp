@@ -8,7 +8,7 @@ import {
   copyFramework,
   dependencies,
   inside,
-  pruneSqlDrivers,
+  pruneUnusedPlugins,
   relocate,
 } from '../macos/bundle.ts';
 import { run } from '../process.ts';
@@ -33,27 +33,34 @@ describe('framework deployment', () => {
   });
   afterEach(() => fs.rmSync(fixture, { recursive: true, force: true }));
 
-  test('keeps SQLite and other plugin families without optional server drivers', () => {
+  test('keeps required providers without server database or serial GPS plugins', () => {
     const bundle = path.join(fixture, 'Wisp.app');
     const plugins = path.join(bundle, 'Contents/PlugIns');
     const drivers = path.join(plugins, 'sqldrivers');
     fs.mkdirSync(drivers, { recursive: true });
     fs.mkdirSync(path.join(plugins, 'platforms'));
+    fs.mkdirSync(path.join(plugins, 'position'));
     const sqlite = path.join(drivers, 'libqsqlite.dylib');
     const cocoa = path.join(plugins, 'platforms/libqcocoa.dylib');
     fs.writeFileSync(sqlite, 'SQLite fixture');
     fs.writeFileSync(cocoa, 'Cocoa fixture');
+    const location = path.join(plugins, 'position/libqtposition_cl.dylib');
+    const nmea = path.join(plugins, 'position/libqtposition_nmea.dylib');
+    fs.writeFileSync(location, 'Core Location fixture');
+    fs.writeFileSync(nmea, 'serial GPS fixture');
     for (const driver of ['mimer', 'odbc', 'psql', 'mysql'])
       fs.writeFileSync(path.join(drivers, `libqsql${driver}.dylib`), 'unused driver');
 
-    pruneSqlDrivers(bundle);
-    pruneSqlDrivers(bundle);
+    pruneUnusedPlugins(bundle);
+    pruneUnusedPlugins(bundle);
 
     expect(fs.readdirSync(drivers)).toEqual(['libqsqlite.dylib']);
     expect(fs.readFileSync(sqlite, 'utf8')).toBe('SQLite fixture');
     expect(fs.readFileSync(cocoa, 'utf8')).toBe('Cocoa fixture');
+    expect(fs.readFileSync(location, 'utf8')).toBe('Core Location fixture');
+    expect(fs.existsSync(nmea)).toBe(false);
     fs.rmSync(drivers, { recursive: true });
-    expect(() => pruneSqlDrivers(bundle)).not.toThrow();
+    expect(() => pruneUnusedPlugins(bundle)).not.toThrow();
   });
 
   test('copies an SDK alias as a self-contained framework', () => {
