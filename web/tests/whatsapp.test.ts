@@ -31,13 +31,21 @@ test('media-only chats can be enabled without depending on text or header titles
   }
 });
 
-test('modern chat titles work and detection explains missing or ambiguous history', () => {
+test('empty chats are usable even with selectable system notices, while incomplete views wait', () => {
   const { dom, w } = setup();
   try {
     element(w.document, 'header').innerHTML =
       '<span data-testid="conversation-info-header-chat-title">Contact</span>';
     expect(w.testAdapter.active().title).toBe('Contact');
     element(w.document, '[data-id]').remove();
+    element(w.document, 'header span').setAttribute('data-id', 'contact-info');
+    element(w.document, 'header').insertAdjacentHTML(
+      'afterend',
+      '<span class="selectable-text">Messages are end-to-end encrypted</span>',
+    );
+    expect(w.testAdapter.active().detection).toBe('empty');
+    expect(w.testAdapter.active().messageIds.length).toBe(0);
+    element(w.document, 'footer').remove();
     expect(w.testAdapter.active().detection).toBe('waiting_for_messages');
     element(w.document, '#main').remove();
     expect(w.testAdapter.active().detection).toBe('no_chat');

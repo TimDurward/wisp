@@ -24,6 +24,7 @@
     "@types/sinonjs__fake-timers": "^15.0.1",
     "esbuild": "^0.28.2",
     "jsdom": "27.0.1",
+    "lucide": "^1.57.0",
     "prettier": "^3.9.10",
     "typescript": "^7.0.2",
     "vitest": "^5.0.4"

@@ -34,6 +34,13 @@ public:
         return QString::fromUtf8(file.readAll());
     }
     Q_INVOKABLE bool commit(const QString& text) { return wisp::commitEditorText(view, text); }
+    Q_INVOKABLE QString voiceScript(bool source) {
+        QFile file(root + (source ? "/web/dist/voice-source.js" : "/web/dist/testing.js"));
+        if (!file.open(QIODevice::ReadOnly)) {
+            return {};
+        }
+        return QString::fromUtf8(file.readAll());
+    }
     bool passed = false;
     QString detail;
     Q_INVOKABLE void result(bool success, const QString& message) {
@@ -70,6 +77,17 @@ private Q_SLOTS:
             check.view->window(), [&] { return check.shortcutEnabled; },
             [&] { ++check.shortcutCount; });
         qApp->installEventFilter(filter);
+        QTRY_VERIFY_WITH_TIMEOUT(!finished.isEmpty(), 15000);
+        QVERIFY2(check.passed, qPrintable(check.detail));
+    }
+    void voiceSourceCrossesOnlyTheMediaUrlBetweenWorlds() {
+        EditingCheck check;
+        check.root = QStringLiteral(WISP_SOURCE_DIR);
+        QSignalSpy finished(&check, &EditingCheck::finished);
+        QQmlApplicationEngine engine;
+        engine.setInitialProperties({{"editingCheck", QVariant::fromValue(&check)}});
+        engine.load(QUrl::fromLocalFile(check.root + "/tests/native/fixtures/voice.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
         QTRY_VERIFY_WITH_TIMEOUT(!finished.isEmpty(), 15000);
         QVERIFY2(check.passed, qPrintable(check.detail));
     }

@@ -1,6 +1,7 @@
 <RCC>
 <qresource prefix="/wisp">
 <file alias="web/wisp.js">../web/dist/wisp.js</file>
+<file alias="web/voice-source.js">../web/dist/voice-source.js</file>
 <file alias="qml/Main.qml">../qml/Main.qml</file>
 <file alias="qml/components/Header.qml">../qml/components/Header.qml</file>
 <file alias="qml/components/PanelScrollView.qml">../qml/components/PanelScrollView.qml</file>

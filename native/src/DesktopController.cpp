@@ -33,8 +33,13 @@ DesktopController::DesktopController(WispBridge* backend, QString root, bool dia
     QObject::connect(backend, &WispBridge::nativeEvent, this, [this](const QString& payload) {
         const auto event = QJsonDocument::fromJson(payload.toUtf8()).object();
         const auto type = event[QStringLiteral("type")].toString();
-        if (type == QStringLiteral("status")) {
+        if (type == QStringLiteral("appearance")) {
+            Q_EMIT appearanceChanged(event[QStringLiteral("dark")].toBool());
+        } else if (type == QStringLiteral("status")) {
             state_ = event.toVariantMap();
+            Q_EMIT stateChanged();
+        } else if (type == QStringLiteral("speech_model")) {
+            state_.insert(QStringLiteral("speech"), event[QStringLiteral("speech")].toVariant());
             Q_EMIT stateChanged();
         } else if (type == QStringLiteral("auth_busy")) {
             noticeKind_ = QStringLiteral("info");
@@ -79,6 +84,9 @@ QString DesktopController::injectedScript() const {
            (diagnostics_ ? QStringLiteral("true;\n") : QStringLiteral("false;\n")) +
            resource(QStringLiteral(":/qtwebchannel/qwebchannel.js")) +
            resource(QStringLiteral(":/wisp/web/wisp.js"));
+}
+QString DesktopController::voiceSourceScript() const {
+    return resource(QStringLiteral(":/wisp/web/voice-source.js"));
 }
 void DesktopController::command(const QString& payload) {
     if (payload.size() <= 32000) {

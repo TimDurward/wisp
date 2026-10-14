@@ -23,6 +23,44 @@ export function records(main: HTMLElement | null) {
     : [];
 }
 
+export function messageDirection(container: HTMLElement, element: HTMLElement, main: HTMLElement) {
+  const id = container.getAttribute('data-id');
+  if (!id) return null;
+  const bubble = container.matches(`${selectors.incoming}, ${selectors.outgoing}`)
+    ? container
+    : container.querySelector<HTMLElement>(`${selectors.incoming}, ${selectors.outgoing}`);
+  const known = directions.get(container);
+  const translated = !!element.querySelector('.wisp-inline, .wisp-voice');
+  let direction: Message['direction'] | null = bubble
+    ? bubble.matches(selectors.incoming)
+      ? 'incoming'
+      : 'outgoing'
+    : translated && known?.id === id
+      ? known.direction
+      : null;
+  if (!direction && /^(true|false)_/.test(id))
+    direction = id.startsWith('true_') ? 'outgoing' : 'incoming';
+  if (!direction) {
+    const hasVoiceMarker = (marker: string) =>
+      [...container.querySelectorAll(`[data-icon="${marker}"]`)].some(
+        (node) => !node.closest(selectors.quote + ', [data-wisp]'),
+      );
+    const incoming = hasVoiceMarker('ptt-incoming'),
+      outgoing = hasVoiceMarker('ptt-outgoing');
+    if (incoming !== outgoing) direction = incoming ? 'incoming' : 'outgoing';
+  }
+  if (!direction) {
+    const bounds = main.getBoundingClientRect(),
+      rect = element.getBoundingClientRect();
+    const left = rect.left - bounds.left,
+      right = bounds.right - rect.right;
+    if (rect.width > 0 && bounds.width > 0 && Math.abs(left - right) >= 16)
+      direction = right < left ? 'outgoing' : 'incoming';
+  }
+  if (direction) directions.set(container, { id, direction });
+  return direction;
+}
+
 export function messages(
   main: HTMLElement | null = document.querySelector<HTMLElement>(selectors.main),
 ): Message[] {
@@ -47,28 +85,8 @@ export function messages(
     const text = roots.map(textOf).join('\n').trim();
     if (!text || byteLength(text) > 8000) continue;
     const element = bubble || roots[0]?.closest('[data-pre-plain-text]') || roots[0]?.parentElement;
-    const known = directions.get(container);
-    const translated = !!element?.querySelector<HTMLElement>('.wisp-inline');
-    let direction = bubble
-      ? bubble.matches(selectors.incoming)
-        ? 'incoming'
-        : 'outgoing'
-      : translated && known?.id === id
-        ? known.direction
-        : null;
-    if (!direction && /^(true|false)_/.test(id))
-      direction = id.startsWith('true_') ? 'outgoing' : 'incoming';
-    if (!direction && element) {
-      // Modern markup may omit direction classes. Only accept clear bubble alignment.
-      const bounds = main.getBoundingClientRect(),
-        rect = element.getBoundingClientRect();
-      const left = rect.left - bounds.left,
-        right = bounds.right - rect.right;
-      if (rect.width > 0 && bounds.width > 0 && Math.abs(left - right) >= 16)
-        direction = right < left ? 'outgoing' : 'incoming';
-    }
+    const direction = element ? messageDirection(container, element, main) : null;
     if (!direction || !element) continue;
-    directions.set(container, { id, direction });
     seen.add(id);
     result.push({ id, text, direction, element, container, sourceElements: roots });
   }

@@ -1,6 +1,6 @@
 export type Direction = 'incoming' | 'outgoing';
 export type Detection =
-  'no_chat' | 'waiting_for_messages' | 'unsupported_messages' | 'ambiguous' | 'ready';
+  'no_chat' | 'waiting_for_messages' | 'unsupported_messages' | 'ambiguous' | 'empty' | 'ready';
 export interface ContextLine {
   direction: Direction;
   text: string;
@@ -60,8 +60,72 @@ export interface Config {
   reply_language: string;
   has_rules?: boolean;
   view_preferences: ViewPreferences;
+  voice_enabled?: boolean;
+  voice_auto?: boolean;
+  voice_max_minutes?: number;
+  speech?: SpeechModel;
+  voice_languages?: VoiceLanguage[];
 }
+export interface SpeechModel {
+  ready: boolean;
+  downloading: boolean;
+  progress: number;
+  error: string;
+  label: string;
+  download_bytes: number;
+}
+export interface VoiceLanguage {
+  code: string;
+  label: string;
+  supported: boolean;
+}
+export interface VoiceNote {
+  id: string;
+  direction: Direction;
+  element: HTMLElement;
+  container: HTMLElement;
+}
+export interface VoiceTranscript {
+  text: string;
+  language: string;
+  confidence: number | null;
+  review: boolean;
+}
+export type VoiceEvent =
+  | {
+      type: 'voice_saved';
+      request_id: string;
+      conversation: string;
+      view_id: string;
+      transcript: VoiceTranscript | null;
+      language: string | null;
+      translation: string | null;
+    }
+  | { type: 'voice_ack'; request_id: string; conversation: string; view_id: string; index: number }
+  | {
+      type: 'voice_status';
+      request_id: string;
+      conversation: string;
+      view_id: string;
+      stage: 'transcribing';
+    }
+  | {
+      type: 'voice_transcript';
+      request_id: string;
+      conversation: string;
+      view_id: string;
+      transcript: VoiceTranscript;
+    }
+  | {
+      type: 'voice_error';
+      request_id: string;
+      conversation: string;
+      view_id: string;
+      message: string;
+    }
+  | { type: 'speech_model'; speech: SpeechModel };
 export type PageRequest =
+  | { type: 'appearance'; dark: boolean }
   | {
       type: 'active_conversation';
       conversation: string;
@@ -76,7 +140,7 @@ export type PageRequest =
       conversation: string;
       message_id: string;
       direction: Direction;
-      purpose: 'reply' | 'reading';
+      purpose: 'reply' | 'reading' | 'voice';
       text: string;
       context: ContextLine[];
     }
@@ -88,6 +152,42 @@ export type PageRequest =
       messages: { message_id: string; direction: Direction; text: string }[];
     }
   | { type: 'cancel_translation'; request_id: string; conversation: string }
+  | {
+      type: 'voice_begin';
+      retranscribe?: boolean;
+      request_id: string;
+      conversation: string;
+      view_id: string;
+      message_id: string;
+      direction: Direction;
+      language: string | null;
+      context: ContextLine[];
+    }
+  | {
+      type: 'voice_audio';
+      request_id: string;
+      conversation: string;
+      view_id: string;
+      index: number;
+      pcm: string;
+    }
+  | {
+      type: 'saved_voice';
+      request_id: string;
+      conversation: string;
+      view_id: string;
+      message_id: string;
+      direction: Direction;
+      language: string | null;
+      context: ContextLine[];
+    }
+  | {
+      type: 'voice_finish' | 'voice_cancel';
+      request_id: string;
+      conversation: string;
+      view_id: string;
+    }
+  | { type: 'speech_download'; conversation: string; view_id: string }
   | {
       type: 'edit_draft';
       edit_id: string;
@@ -116,6 +216,7 @@ export type NativeEvent =
   | Config
   | SavedMessages
   | TranslationEvent
+  | VoiceEvent
   | { type: 'draft_edit_error'; conversation: string; edit_id: string; message: string };
 export interface NativeEdit {
   edit_id: string;

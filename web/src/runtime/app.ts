@@ -3,6 +3,8 @@ import { UI } from '../ui';
 import { FocusLayout } from '../ui/focus';
 import { createDraft } from './draft';
 import { createReadingQueue } from './reading';
+import { watchAppearance, refreshAppearance } from '../ui/appearance';
+import { createVoices } from './voice';
 import type {
   Chat,
   View,
@@ -55,8 +57,16 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
   };
   let preferences = { ...defaults };
   let navigationSerial = 0,
+    emptyNavigationSerial = 0,
+    viewNavigationSerial = 0,
     historyIntent: number | null = null;
   const submit: Submit = (value) => native.submit(JSON.stringify(value));
+  const stopAppearance = watchAppearance((dark) => submit({ type: 'appearance', dark }));
+  const voices = createVoices({
+    submit,
+    session: () => ({ active, enabled, config, preferences }),
+    isCurrentView: () => currentView(WhatsApp.active()),
+  });
   const readings = createReadingQueue({
     submit,
     session: () => ({ active, enabled, config, preferences }),
@@ -91,16 +101,17 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
       active.messageIds.length &&
       !next.messageIds.some((id) => active.messageIds.includes(id));
     return (
-      next.conversation !== active.peer ||
+      (next.conversation !== active.peer && !(active.detection === 'empty' && !active.peer)) ||
       next.title !== active.title ||
       next.main !== active.main ||
       next.header !== active.header ||
       next.selection !== active.selection ||
+      (active.detection === 'empty' && emptyNavigationSerial !== viewNavigationSerial) ||
       (disjoint && !next.conversation && historyIntent !== navigationSerial)
     );
   }
   function currentView(next: Chat) {
-    const current = next.detection === 'ready' && !viewChanged(next);
+    const current = ['ready', 'empty'].includes(next.detection) && !viewChanged(next);
     if (!current) schedule();
     return current;
   }
@@ -108,11 +119,13 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
     enabled = false;
     config = null;
     readings.clear();
+    voices.clear();
     draft.reset();
   }
   function scan() {
     timer = undefined;
     const next = WhatsApp.active();
+    refreshAppearance();
     FocusLayout.refresh();
     const idsChanged = next.messageIds.join('|') !== active.messageIds.join('|');
     const changedView = viewChanged(next);
@@ -138,6 +151,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
         conversation: active.conversation,
         viewId: active.viewId,
       };
+      viewNavigationSerial = emptyNavigationSerial;
       submit({
         type: 'active_conversation',
         conversation: next.conversation,
@@ -150,6 +164,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
     if (!enabled || !active.conversation) return;
     if (config?.can_translate) draft.bind(active.main, config);
     readings.scan();
+    voices.scan();
   }
   function schedule() {
     if (!timer) timer = window.setTimeout(scan, 160);
@@ -184,6 +199,13 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
         (config &&
           (config.history_revision !== value.history_revision ||
             config.reading_label !== value.reading_label));
+      if (
+        clear ||
+        revision !== value.revision ||
+        config?.can_translate !== value.can_translate ||
+        (config?.voice_enabled && !value.voice_enabled)
+      )
+        voices.clear();
       if (clear) readings.clear();
       else if (revision !== value.revision || config?.can_translate !== value.can_translate)
         readings.cancel();
@@ -202,6 +224,11 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
       if (!enabled || !config.can_translate) draft.reset();
       else if (currentView(WhatsApp.active())) draft.bind(active.main, config);
       schedule();
+    } else if (value.type === 'speech_model') {
+      if (config) config.speech = value.speech;
+      voices.scan();
+    } else if (voices.accept(value)) {
+      /* Voice jobs own their transcript and translation events. */
     } else if (value.type === 'saved_messages') readings.hydrate(value);
     else if (value.conversation === active.conversation && !draft.accept(value)) {
       if (
@@ -251,6 +278,10 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
   listen(
     'pointerdown',
     (event) => {
+      if (!active.main?.contains(event.target instanceof Node ? event.target : null)) {
+        emptyNavigationSerial++;
+        if (active.detection === 'empty') schedule();
+      }
       if (
         !active.main?.contains(event.target instanceof Node ? event.target : null) ||
         (event.target instanceof Element &&
@@ -265,6 +296,10 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
   listen(
     'keydown',
     (event) => {
+      if (!active.main?.contains(event.target instanceof Node ? event.target : null)) {
+        emptyNavigationSerial++;
+        if (active.detection === 'empty') schedule();
+      }
       const scrollKey = ['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown'].includes(
         event.key,
       );
@@ -305,10 +340,12 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
       window.clearTimeout(timer);
       observer.disconnect();
       readings.clear();
+      voices.clear();
       draft.dispose();
       UI.remove();
       FocusLayout.configure(false);
       lifecycle.abort();
+      stopAppearance();
       delete window.__wispDraftEditing;
       delete window.__wispLayout;
       delete window.__wispReadLayout;

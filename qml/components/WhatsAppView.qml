@@ -60,6 +60,13 @@ WebEngineView {
         script.worldId = WebEngineScript.ApplicationWorld;
         script.runsOnSubFrames = false;
         userScripts.insert(script);
+        const voice = WebEngine.script();
+        voice.name = "wisp-voice-source";
+        voice.sourceCode = root.desktop.voiceSourceScript;
+        voice.injectionPoint = WebEngineScript.DocumentReady;
+        voice.worldId = WebEngineScript.MainWorld;
+        voice.runsOnSubFrames = false;
+        userScripts.insert(voice);
         url = "https://web.whatsapp.com/";
     }
     onNavigationRequested: request => {

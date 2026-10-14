@@ -11,6 +11,11 @@ const options = {
   legalComments: 'none',
 };
 await build({ ...options, entryPoints: ['web/src/main.ts'], outfile: 'web/dist/wisp.js' });
+await build({
+  ...options,
+  entryPoints: ['web/src/voice-source.ts'],
+  outfile: 'web/dist/voice-source.js',
+});
 if (process.argv.includes('--tests')) {
   await build({
     ...options,

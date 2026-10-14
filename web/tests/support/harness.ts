@@ -7,6 +7,7 @@ import type {
   NativeChannel,
   PageRequest,
   ViewPreferences,
+  VoiceTranscript,
 } from '../../src/contracts';
 import { element, required } from './fixtures';
 const bundle = readFileSync(new URL('../../dist/testing.js', import.meta.url), 'utf8');
@@ -17,7 +18,14 @@ type FixtureEvent =
         Omit<Config, 'type' | 'conversation' | 'revision' | 'enabled' | 'view_preferences'>
       > & { view_preferences?: Partial<ViewPreferences> });
 
-export function setup({ saved = new Map<string, string>(), autoHydrate = true } = {}) {
+export function setup({
+  saved = new Map<string, string>(),
+  savedVoices = new Map<
+    string,
+    { transcript: VoiceTranscript; language: string | null; translation: string | null }
+  >(),
+  autoHydrate = true,
+} = {}) {
   // Test-only markup for the adapter contract; never packaged into Wisp.
   const dom = new JSDOM(
     `<main id="main"><header><span title="Contact">Contact</span></header>
@@ -37,6 +45,12 @@ export function setup({ saved = new Map<string, string>(), autoHydrate = true } 
     close();
   };
   w.TextEncoder = TextEncoder;
+  w.matchMedia = () =>
+    ({
+      matches: false,
+      addEventListener() {},
+      removeEventListener() {},
+    }) as unknown as MediaQueryList;
   const getStyle = w.getComputedStyle.bind(w);
   w.getComputedStyle = (node, pseudo) => {
     if (!pseudo) return getStyle(node);
@@ -63,6 +77,22 @@ export function setup({ saved = new Map<string, string>(), autoHydrate = true } 
     submit(payload) {
       const value = JSON.parse(payload) as PageRequest;
       sent.push(value);
+      if (value.type === 'saved_voice' && autoHydrate) {
+        const saved = savedVoices.get(value.message_id);
+        queueMicrotask(() =>
+          callback(
+            JSON.stringify({
+              type: 'voice_saved',
+              request_id: value.request_id,
+              conversation: value.conversation,
+              view_id: value.view_id,
+              transcript: saved?.transcript || null,
+              language: saved?.language || null,
+              translation: saved?.translation || null,
+            }),
+          ),
+        );
+      }
       if (value.type === 'saved_messages' && autoHydrate)
         queueMicrotask(() =>
           callback(
@@ -94,6 +124,7 @@ export function setup({ saved = new Map<string, string>(), autoHydrate = true } 
     }
   };
   w.testAdapter.visible = () => true;
+  w.testAdapter.voiceVisible = () => true;
   return {
     dom,
     w,

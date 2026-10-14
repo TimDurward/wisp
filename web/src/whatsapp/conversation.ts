@@ -2,6 +2,7 @@ import type { Chat } from '../contracts';
 import { selectors } from './selectors';
 import { records, messages, conversationFromMessageId, messageId } from './messages';
 import { utf8Limit } from './text';
+import { composer } from './composer';
 export function active(): Chat {
   const main = document.querySelector<HTMLElement>(selectors.main);
   if (!main)
@@ -20,8 +21,8 @@ export function active(): Chat {
   const title =
     utf8Limit((titleNode?.getAttribute('title') || titleNode?.textContent || '').trim(), 256) ||
     'Current chat';
-  // Identity comes from message records, including media, stickers and voice notes.
-  // Text extraction and header markup must not decide whether a chat can be enabled.
+  // Existing chats use message records, including media, stickers and voice notes.
+  // Empty chats receive a view-bound native identity until their first message.
   const messageIds = [
     ...new Set(
       records(main)
@@ -40,9 +41,13 @@ export function active(): Chat {
       messageIds: [],
       detection: ids.length
         ? 'ambiguous'
-        : main.querySelector<HTMLElement>(selectors.text)
+        : main.querySelector<HTMLElement>(
+              `${selectors.incoming}, ${selectors.outgoing}, [data-pre-plain-text]`,
+            )
           ? 'unsupported_messages'
-          : 'waiting_for_messages',
+          : header && composer(main)
+            ? 'empty'
+            : 'waiting_for_messages',
     };
   return {
     conversation: ids[0] || '',

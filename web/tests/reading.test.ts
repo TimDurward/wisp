@@ -66,8 +66,68 @@ test('unknown or conflicting chat identities fail closed', () => {
     extra.remove();
     element(w.document, '[data-id]').dataset.id = 'unknown-format';
     expect(w.testAdapter.active().conversation).toBe('');
+    expect(w.testAdapter.active().detection).toBe('unsupported_messages');
   } finally {
     dom.window.close();
+  }
+});
+
+test('an empty chat translates a first draft and retains its view when the first message arrives', async () => {
+  const app = setup();
+  try {
+    element(app.w.document, '[data-id]').remove();
+    app.start();
+    await app.flush();
+    const empty = required(app.requests('active_conversation').at(-1));
+    expect(empty.detection).toBe('empty');
+    app.emit({ type: 'config', conversation: 'chat:empty', revision: 1, enabled: true });
+    await app.flush();
+    element<HTMLButtonElement>(app.w.document, '.wisp-preview-button').click();
+    const draft = required(app.requests('translate').at(-1));
+    expect(draft.purpose).toBe('reply');
+    expect(draft.conversation).toBe('chat:empty');
+    expect(Array.from(draft.context)).toEqual([]);
+    element(app.w.document, 'footer').insertAdjacentHTML(
+      'beforebegin',
+      '<div data-id="true_123@lid_FIRST"><div class="message-out"><span class="selectable-text">Hello</span></div></div>',
+    );
+    await app.flush();
+    const firstMessage = required(app.requests('active_conversation').at(-1));
+    expect(firstMessage.detection).toBe('ready');
+    expect(firstMessage.view_id).toBe(empty.view_id);
+    expect(app.w.document.querySelector('.wisp-preview-button')).not.toBeNull();
+  } finally {
+    app.dom.window.close();
+  }
+});
+
+test('navigation between empty same-name chats resets enablement even when WhatsApp reuses markup', async () => {
+  const app = setup();
+  try {
+    element(app.w.document, '[data-id]').remove();
+    app.start();
+    await app.flush();
+    const empty = required(app.requests('active_conversation').at(-1));
+    app.emit({ type: 'config', conversation: 'chat:first-empty', revision: 1, enabled: true });
+    await app.flush();
+    const row = app.w.document.createElement('button');
+    row.textContent = 'Contact';
+    app.w.document.body.append(row);
+    row.dispatchEvent(new app.w.MouseEvent('pointerdown', { bubbles: true }));
+    await app.flush();
+    const next = required(app.requests('active_conversation').at(-1));
+    expect(next.view_id).not.toBe(empty.view_id);
+    expect(app.w.document.querySelector('.wisp-preview-button')).toBeNull();
+    app.emit({
+      type: 'config',
+      conversation: 'chat:first-empty',
+      view_id: empty.view_id,
+      revision: 2,
+      enabled: true,
+    });
+    expect(app.w.document.querySelector('.wisp-preview-button')).toBeNull();
+  } finally {
+    app.dom.window.close();
   }
 });
 

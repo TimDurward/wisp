@@ -17,6 +17,7 @@ class DesktopController final : public QObject {
     Q_PROPERTY(QString noticeKind READ noticeKind NOTIFY noticeChanged)
     Q_PROPERTY(QString dataRoot READ dataRoot CONSTANT)
     Q_PROPERTY(QString injectedScript READ injectedScript CONSTANT)
+    Q_PROPERTY(QString voiceSourceScript READ voiceSourceScript CONSTANT)
     Q_PROPERTY(bool focusShortcutEnabled MEMBER focusShortcutEnabled_)
 public:
     DesktopController(WispBridge* backend, QString root, bool diagnostics,
@@ -27,6 +28,7 @@ public:
     QString noticeKind() const { return noticeKind_; }
     QString dataRoot() const { return root_; }
     QString injectedScript() const;
+    QString voiceSourceScript() const;
     void setView(QObject* view) { view_ = view; }
     Q_INVOKABLE bool commitDraft(const QString& editId);
     Q_INVOKABLE void command(const QString& payload);
@@ -37,6 +39,7 @@ public:
     Q_INVOKABLE void saveLayoutDiagnostic(const QString& payload);
 Q_SIGNALS:
     void stateChanged();
+    void appearanceChanged(bool dark);
     void authBusyChanged();
     void noticeChanged();
     void welcome();

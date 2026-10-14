@@ -117,6 +117,9 @@ function createFixture() {
     background: () => document.querySelector<HTMLElement>('#editor')!.innerText.trim(),
     text: () => WispAdapter.draft(main),
     focusLayout: () => {
+      // The production runtime refreshes this during its scan. This standalone
+      // fixture has no runtime, and Qt may settle the viewport after injection.
+      WispLayout.refresh();
       const shell = document.querySelector<HTMLElement>('#shell')!.getBoundingClientRect(),
         chat = document.querySelector<HTMLElement>('#chat')!,
         bounds = chat.getBoundingClientRect();
@@ -145,6 +148,17 @@ function createFixture() {
         paintFocused;
       const debug = {
         boot,
+        messagesBorder: getComputedStyle(document.querySelector<HTMLElement>('#messages')!)
+          .borderLeftWidth,
+        messagesAfterBorder: getComputedStyle(
+          document.querySelector<HTMLElement>('#messages')!,
+          '::after',
+        ).borderLeftWidth,
+        messageBorder: getComputedStyle(message.element).borderLeftWidth,
+        messagesClasses: document.querySelector<HTMLElement>('#messages')!.className,
+        messageHeight: document.querySelector<HTMLElement>('#messages')!.getBoundingClientRect()
+          .height,
+        mainHeight: main.getBoundingClientRect().height,
         classes: chat.className,
         left: bounds.left,
         width: bounds.width,
