@@ -6,7 +6,7 @@ Style {
     control {
         padding: 10
         spacing: 8
-        text.pointSize: 13
+        text.pointSize: 10.5
         text.color: Tokens.ink
         background {
             implicitWidth: 110
@@ -34,7 +34,7 @@ Style {
         background.border.width: 0
         text.color: Tokens.ink
         hovered.background.color: Tokens.raised
-        checked.background.color: Tokens.accentTint
+        checked.background.color: Tokens.raised
     }
     comboBox {
         background.implicitWidth: 230
@@ -73,7 +73,7 @@ Style {
         indicator.implicitHeight: 2
     }
     popup {
-        padding: 26
+        padding: 16
     }
     scrollView {
         padding: 0
@@ -97,9 +97,9 @@ Style {
         }
     }
     light: Theme {
-        applicationWindow.background.color: "#f7f9f8"
+        applicationWindow.background.color: Tokens.canvas
     }
     dark: Theme {
-        applicationWindow.background.color: "#111b21"
+        applicationWindow.background.color: Tokens.canvas
     }
 }

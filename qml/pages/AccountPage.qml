@@ -7,41 +7,35 @@ import "../components"
 ColumnLayout {
     id: root
     required property var settings
+    readonly property var accounts: settings.session.state.accounts || []
     Layout.fillWidth: true
     spacing: 16
     SettingsCard {
         Layout.fillWidth: true
         heading: root.settings.session.accountLabel
-        description: !root.settings.session.credentialsAvailable ? "Sign-in is available on macOS." :
-                                                                   root.settings.session.eligible
-                                                                   ? "Uses your ChatGPT plan." :
-                                                                     "Connect ChatGPT for new translations."
+        description: root.settings.session.connected && root.accounts.length > 1 ? "" : root.settings.session.accountEmail || (!root.settings.session.credentialsAvailable ? "Sign-in is available on macOS." : "Uses your ChatGPT plan for new translations.")
+        objectName: "accountConnectionCard"
         SK.Button {
-            visible: !root.settings.session.connected || !root.settings.session.eligible || (
-                         !root.settings.session.ready && !root.settings.session.modelBusy)
+            visible: !root.settings.session.connected || !root.settings.session.eligible || (!root.settings.session.ready && !root.settings.session.modelBusy)
             text: root.settings.session.accountBusy ? "Connecting…" : "Continue with ChatGPT"
-            enabled: root.settings.session.credentialsAvailable &&
-                     !root.settings.session.accountBusy
+            enabled: root.settings.session.credentialsAvailable && !root.settings.session.accountBusy
             onClicked: root.settings.session.command("sign_in")
         }
-        SK.ComboBox {
-            visible: root.settings.session.state.accounts.length > 1
+        ChoiceBox {
+            objectName: "accountChoice"
+            visible: root.accounts.length > 1
             Layout.fillWidth: true
-            model: root.settings.session.state.accounts.map((account, index) => ({
-                label: account.email + (root.settings.session.state.accounts.filter(other => other.email
-                                                                                             === account.email).length
-                                        > 1 ? " · Account " + (index + 1) : ""),
-                client_id: account.client_id
-            }))
+            model: root.accounts.map((account, index) => ({
+                        label: account.email + (root.accounts.filter(other => other.email === account.email).length > 1 ? " · Account " + (index + 1) : ""),
+                        client_id: account.client_id
+                    }))
             textRole: "label"
             valueRole: "client_id"
-            currentIndex: root.settings.session.state.accounts.findIndex(account
-                                                                         => account.client_id
-                                                                            === root.settings.session.state.account)
+            currentIndex: root.accounts.findIndex(account => account.client_id === root.settings.session.state.account)
             enabled: !root.settings.session.accountBusy
             onActivated: root.settings.session.command("account", {
-                                                           client_id: currentValue
-                                                       })
+                client_id: currentValue
+            })
             Accessible.name: "ChatGPT account"
         }
         RowLayout {
@@ -58,8 +52,8 @@ ColumnLayout {
                 text: "Add account"
                 enabled: !root.settings.session.accountBusy
                 onClicked: root.settings.session.command("sign_in", {
-                                                             new_account: true
-                                                         })
+                    new_account: true
+                })
             }
             SK.ToolButton {
                 visible: root.settings.session.connected
@@ -85,26 +79,21 @@ ColumnLayout {
                 }
                 SK.ToolButton {
                     text: root.settings.session.modelBusy ? "Checking…" : "Refresh"
-                    enabled: root.settings.session.eligible && !root.settings.session.accountBusy
-                             && !root.settings.session.modelBusy
+                    enabled: root.settings.session.eligible && !root.settings.session.accountBusy && !root.settings.session.modelBusy
                     onClicked: root.settings.session.command("refresh_models")
                 }
             }
-            SK.ComboBox {
+            ChoiceBox {
                 Layout.fillWidth: true
                 model: root.settings.session.state.models
                 textRole: "display_name"
                 valueRole: "slug"
-                currentIndex: root.settings.session.state.models.findIndex(model => model.slug
-                                                                                    === root.settings.session.state.model)
-                displayText: root.settings.session.modelBusy ? "Checking available models…" : count
-                                                               > 0 ? currentText :
-                                                                     "Available after connecting"
-                enabled: root.settings.session.ready && !root.settings.session.accountBusy &&
-                         !root.settings.session.modelBusy
+                currentIndex: root.settings.session.state.models.findIndex(model => model.slug === root.settings.session.state.model)
+                displayText: root.settings.session.modelBusy ? "Checking available models…" : count > 0 ? currentText : "Available after connecting"
+                enabled: root.settings.session.ready && !root.settings.session.accountBusy && !root.settings.session.modelBusy
                 onActivated: root.settings.session.command("model", {
-                                                               slug: currentValue
-                                                           })
+                    slug: currentValue
+                })
                 Accessible.name: "Translation model"
             }
             Text {
@@ -112,7 +101,7 @@ ColumnLayout {
                 color: Tokens.muted
                 font.pixelSize: 12
             }
-            SK.ComboBox {
+            ChoiceBox {
                 Layout.fillWidth: true
                 readonly property var choices: [
                     {
@@ -120,34 +109,29 @@ ColumnLayout {
                         label: "Automatic · Model default"
                     }
                 ].concat((root.settings.session.state.reasoning_options || []).map(id => ({
-                    id: id,
-                    label: ({
-                                none: "None · Fastest",
-                                low: "Low · Faster replies",
-                                medium: "Medium · Balanced",
-                                high: "High · More deliberation",
-                                xhigh: "Extra high",
-                                max: "Maximum"
-                            })[id]
-                })))
+                            id: id,
+                            label: ({
+                                    none: "None · Fastest",
+                                    low: "Low · Faster replies",
+                                    medium: "Medium · Balanced",
+                                    high: "High · More deliberation",
+                                    xhigh: "Extra high",
+                                    max: "Maximum"
+                                })[id]
+                        })))
                 objectName: "reasoningComboBox"
                 model: choices
                 textRole: "label"
-                currentIndex: Math.max(0, choices.findIndex(choice => choice.id === (
-                                                                          root.settings.session.state.reasoning_effort
-                                                                          || null)))
-                enabled: choices.length > 1 && root.settings.session.ready &&
-                         !root.settings.session.accountBusy && !root.settings.session.modelBusy
+                currentIndex: Math.max(0, choices.findIndex(choice => choice.id === (root.settings.session.state.reasoning_effort || null)))
+                enabled: choices.length > 1 && root.settings.session.ready && !root.settings.session.accountBusy && !root.settings.session.modelBusy
                 onActivated: root.settings.session.command("reasoning", {
-                                                               slug: root.settings.session.state.model,
-                                                               effort: choices[currentIndex].id
-                                                           })
+                    slug: root.settings.session.state.model,
+                    effort: choices[currentIndex].id
+                })
                 Accessible.name: "Thinking level"
             }
             Text {
-                text: (root.settings.session.state.reasoning_options || []).length
-                      ? "Higher thinking levels can slow replies. Saved per model." :
-                        "Uses the model’s default thinking level."
+                text: (root.settings.session.state.reasoning_options || []).length ? "Higher thinking levels can slow replies. Saved per model." : "Uses the model’s default thinking level."
                 color: Tokens.muted
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
@@ -174,14 +158,14 @@ ColumnLayout {
             }
         }
         Text {
-            text: "Individual chats can be cleared in chat preferences."
+            text: "Clear one chat from Chat translation."
             color: Tokens.muted
             font.pixelSize: 12
             Layout.fillWidth: true
         }
     }
     Text {
-        text: "Enabled chats share text and recent context with OpenAI. Credentials stay in the OS keychain."
+        text: "Enabled chats share text with ChatGPT. Sign-in stays in the OS keychain."
         color: Tokens.muted
         font.pixelSize: 12
         wrapMode: Text.WordWrap

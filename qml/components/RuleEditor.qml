@@ -9,6 +9,7 @@ ColumnLayout {
     property bool globalScope: false
     property int limit: 2000
     property int editorHeight: 160
+    property bool suggestions: false
     readonly property int characterCount: Array.from(editor.text).length
     readonly property bool valid: characterCount <= limit
     spacing: 12
@@ -17,13 +18,17 @@ ColumnLayout {
             editor.text = editor.text.trim() ? editor.text.trim() + "\n" + rule : rule;
         editor.forceActiveFocus();
     }
+    SK.ToolButton {
+        text: root.suggestions ? "Hide suggestions" : "Suggestions"
+        onClicked: root.suggestions = !root.suggestions
+    }
     Flow {
+        visible: root.suggestions
         Layout.fillWidth: true
         spacing: 6
         SK.ToolButton {
             text: "Casual"
-            onClicked: root.appendRule(
-                           "Keep the tone casual and natural. Avoid overly formal wording.")
+            onClicked: root.appendRule("Keep the tone casual and natural. Avoid overly formal wording.")
         }
         SK.ToolButton {
             text: "Formal"
@@ -31,8 +36,7 @@ ColumnLayout {
         }
         SK.ToolButton {
             text: "No opening ¿ / ¡"
-            onClicked: root.appendRule(
-                           "In Spanish, omit opening ¿ and ¡ while keeping closing ? and !.")
+            onClicked: root.appendRule("In Spanish, omit opening ¿ and ¡ while keeping closing ? and !.")
         }
         SK.ToolButton {
             text: "Clear"
@@ -46,18 +50,15 @@ ColumnLayout {
         Layout.preferredHeight: root.editorHeight
         SK.TextArea {
             id: editor
-            objectName: "rulesEditor"
+            objectName: root.globalScope ? "globalRulesEditor" : "rulesEditor"
             width: inputScroll.availableWidth
             height: Math.max(implicitHeight, inputScroll.availableHeight)
             font.pixelSize: 14
-            placeholderText: root.globalScope
-                             ? "For example: Keep it casual. Preserve names and emojis." :
-                               "For example: Use usted with this contact. Keep product names in English."
+            placeholderText: root.globalScope ? "For example: Keep it casual. Preserve names and emojis." : "For example: Use usted with this contact. Keep product names in English."
             wrapMode: TextEdit.Wrap
             textFormat: TextEdit.PlainText
             selectByMouse: true
-            Accessible.name: root.globalScope ? "Global translation rules" :
-                                                "Chat translation rules"
+            Accessible.name: root.globalScope ? "Global translation rules" : "Chat translation rules"
         }
     }
     RowLayout {

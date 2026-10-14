@@ -1,16 +1,21 @@
 import QtQuick
 import QtQuick.Templates as T
-import Qt.labs.StyleKit as SK
 
 T.ScrollView {
     id: root
     clip: true
     contentWidth: availableWidth
     // Reserve a stable gutter so scrollbar visibility cannot resize wrapped
-    // content recursively. Template attachments keep the bars in StyleKit.
+    // content recursively.
     rightPadding: 8
     bottomPadding: 0
-    T.ScrollBar.vertical: SK.ScrollBar {
+    T.ScrollBar.horizontal: CompactScrollBar {
+        objectName: "horizontalPanelScrollBar"
+        policy: T.ScrollBar.AlwaysOff
+        visible: false
+        enabled: false
+    }
+    T.ScrollBar.vertical: CompactScrollBar {
         parent: root
         x: root.width - width
         y: root.topPadding

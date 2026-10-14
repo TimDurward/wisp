@@ -8,11 +8,10 @@ SK.Frame {
     property string heading: ""
     property string description: ""
     default property alias content: rows.data
-    padding: 18
+    padding: 0
     background: Rectangle {
         color: Tokens.surface
-        radius: 12
-        border.color: Tokens.line
+        border.width: 0
     }
     contentItem: ColumnLayout {
         spacing: 12
@@ -21,15 +20,16 @@ SK.Frame {
             text: root.heading
             color: Tokens.ink
             font.pixelSize: 15
-            font.weight: Font.DemiBold
+            font.weight: Font.Medium
             Layout.fillWidth: true
         }
         Text {
             visible: !!root.description
             text: root.description
+            textFormat: Text.PlainText
             color: Tokens.muted
             font.pixelSize: 12
-            wrapMode: Text.WordWrap
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
             lineHeight: 1.3
             Layout.fillWidth: true
         }

@@ -22,24 +22,19 @@ QtObject {
     readonly property bool canToggle: hasChat && (enabled || ready || state.chat_cache_count > 0)
     readonly property bool canEditRules: hasChat && !starting
     readonly property var viewPreferences: state.view_preferences || ({
-                                                                          reading_view:
-                                                                          "translation_first",
-                                                                          include_sent: true,
-                                                                          live_preview: true,
-                                                                          enter_prepares: true,
-                                                                          focus_chat: false,
-                                                                          original_on_hover: true
-                                                                      })
+            reading_view: "translation_first",
+            include_sent: true,
+            live_preview: true,
+            enter_prepares: true,
+            focus_chat: false,
+            original_on_hover: true
+        })
     readonly property var translationPreferences: state.translation_preferences || ({
-                                                                                        reading_language:
-                                                                                        "english",
-                                                                                        reply_language:
-                                                                                        "spanish",
-                                                                                        spanish_variant:
-                                                                                        "peru",
-                                                                                        global_rules:
-                                                                                        ""
-                                                                                    })
+            reading_language: "english",
+            reply_language: "spanish",
+            spanish_variant: "peru",
+            global_rules: ""
+        })
     readonly property int savedCount: (state.saved_count || 0) + (state.cache_count || 0)
     function languageLabel(id) {
         return (state.languages || []).find(item => item.id === id)?.label || "…";
@@ -48,12 +43,8 @@ QtObject {
     readonly property string replyLabel: languageLabel(translationPreferences.reply_language)
     readonly property string focusShortcut: Qt.platform.os === "osx" ? "⌘B" : "Ctrl+B"
     readonly property string settingsShortcut: Qt.platform.os === "osx" ? "⌘," : "Ctrl+,"
-    readonly property string accountLabel: starting ? "Restoring your account…" : desktop.authBusy
-                                                      ? "Connecting to ChatGPT…" : connected
-                                                        && eligible ? "ChatGPT connected" :
-                                                                      connected
-                                                                      ? "ChatGPT plan access needed" :
-                                                                        "Connect ChatGPT"
+    readonly property string accountLabel: starting ? "Restoring your account…" : desktop.authBusy ? "Connecting to ChatGPT…" : connected && eligible ? "ChatGPT connected" : connected ? "ChatGPT plan access needed" : "Connect ChatGPT"
+    readonly property string accountEmail: connected ? (state.accounts || []).find(account => account.client_id === state.account)?.email || "" : ""
     readonly property string chatHint: {
         if (starting)
             return "Starting Wisp…";
@@ -70,24 +61,23 @@ QtObject {
         if (desktop.authBusy)
             return "Finish signing in to ChatGPT in your browser";
         if (!eligible)
-            return "Connect ChatGPT in Settings to translate this chat";
+            return "Connect ChatGPT in App settings to translate this chat";
         if (modelBusy)
             return "Checking your available translation models…";
         if (!ready)
-            return "Choose an available model in Settings";
-        return enabled ? "Translation is on · Earlier messages translate as you scroll" :
-                         "Turn on translation for this conversation";
+            return "Choose an available model in App settings";
+        return enabled ? "Translation is on · Earlier messages translate as you scroll" : "Turn on translation for this conversation";
     }
     function command(type, fields) {
         desktop.command(JSON.stringify(Object.assign({
-                                                         type: type
-                                                     }, fields || {})));
+            type: type
+        }, fields || {})));
     }
     function setEnabled(value) {
         command("enable", {
-                    enabled: value,
-                    view_id: state.view_id
-                });
+            enabled: value,
+            view_id: state.view_id
+        });
     }
     function setPreference(key, value) {
         if (key === "focus_chat") {
@@ -99,8 +89,8 @@ QtObject {
         let preferences = Object.assign({}, viewPreferences);
         preferences[key] = value;
         command("view_preferences", {
-                    preferences: preferences
-                });
+            preferences: preferences
+        });
     }
     onStateChanged: {
         if (focusPending && !!state.view_preferences?.focus_chat === pendingFocus)

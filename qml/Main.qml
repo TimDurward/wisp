@@ -16,6 +16,8 @@ SK.ApplicationWindow {
     minimumHeight: 660
     visible: true
     title: "Wisp"
+    property url initialWhatsAppUrl: "https://web.whatsapp.com/"
+    property string iconRoot: "qrc:/wisp/assets/icons/"
     SK.StyleKit.style: WispStyle {}
     property string lastStructure: ""
     property string lastLayoutView: ""
@@ -28,16 +30,18 @@ SK.ApplicationWindow {
     function capturePanel(name) {
         if (name === "settings")
             settings.openPage(0);
+        else if (name === "voice")
+            settings.openPage(1);
         else if (name === "reading")
             settings.openReading();
         else if (name === "rules")
             rules.openForCurrent();
         else if (name === "defaults")
-            settings.openPage(1);
+            settings.openPage(3);
         else if (name === "languages")
             settings.openPage(0);
         else if (name === "account")
-            settings.openPage(3);
+            settings.openPage(4);
     }
     Session {
         id: appSession
@@ -47,16 +51,14 @@ SK.ApplicationWindow {
     Binding {
         target: window.desktop
         property: "focusShortcutEnabled"
-        value: !appSession.starting && (appSession.hasChat || appSession.focusChat) &&
-               !settings.visible && !rules.visible && !welcome.visible
+        value: !appSession.starting && (appSession.hasChat || appSession.focusChat) && !settings.visible && !rules.visible && !welcome.visible
     }
     Connections {
         target: appSession
         function onFocusRequested(focused) {
             const action = appSession.focusPending ? "preview" : "cancel";
             if (window.desktop.isWhatsApp(browser.url))
-                browser.runJavaScript("globalThis.__wispLayout?." + action + "(" + JSON.stringify(
-                                          focused) + ")", WebEngineScript.ApplicationWorld);
+                browser.runJavaScript("globalThis.__wispLayout?." + action + "(" + JSON.stringify(focused) + ")", WebEngineScript.ApplicationWorld);
             if (appSession.focusPending)
                 focusTimeout.restart();
             window.captureLayout();
@@ -81,13 +83,12 @@ SK.ApplicationWindow {
     Timer {
         id: layoutCapture
         interval: 500
-        onTriggered: browser.runJavaScript("globalThis.__wispReadLayout?.()",
-                                           WebEngineScript.ApplicationWorld, report => {
-                                               if (report)
-                                                   window.desktop.saveLayoutDiagnostic(report);
-                                               if (--window.layoutCapturesRemaining > 0)
-                                                   layoutCapture.restart();
-                                           })
+        onTriggered: browser.runJavaScript("globalThis.__wispReadLayout?.()", WebEngineScript.ApplicationWorld, report => {
+            if (report)
+                window.desktop.saveLayoutDiagnostic(report);
+            if (--window.layoutCapturesRemaining > 0)
+                layoutCapture.restart();
+        })
     }
     Timer {
         id: noticeTimeout
@@ -96,24 +97,24 @@ SK.ApplicationWindow {
     }
     // Development-only structural report. Never logs message text or identifiers.
     function reportStructure() {
-        browser.runJavaScript("globalThis.__wispReadStructure?.()", WebEngineScript.ApplicationWorld,
-                              result => {
-                                  if (!result || result === window.lastStructure)
-                                      return;
-                                  window.lastStructure = result;
-                                  console.info("Wisp structure: " + result);
-                                  console.info("Wisp readiness: " + JSON.stringify({
-                                                                                       conversation:
-                                                                                           !!desktop.state.conversation,
-                                                                                       eligible: !
-                                                                                                 !desktop.state.eligible,
-                                                                                       models: desktop.state.models.length
-                                                                                   }));
-                              });
+        browser.runJavaScript("globalThis.__wispReadStructure?.()", WebEngineScript.ApplicationWorld, result => {
+            if (!result || result === window.lastStructure)
+                return;
+            window.lastStructure = result;
+            console.info("Wisp structure: " + result);
+            console.info("Wisp readiness: " + JSON.stringify({
+                conversation: !!desktop.state.conversation,
+                eligible: !!desktop.state.eligible,
+                models: desktop.state.models.length
+            }));
+        });
     }
 
     Connections {
         target: window.desktop
+        function onAppearanceChanged(dark) {
+            Tokens.browserDark = dark;
+        }
         function onWelcome() {
             welcome.open();
         }
@@ -127,20 +128,17 @@ SK.ApplicationWindow {
         }
     }
     header: Header {
+        id: appHeader
         session: appSession
+        iconRoot: window.iconRoot
         onSettingsRequested: settings.open()
-        onLanguagesRequested: settings.openPage(0)
-        onRulesRequested: rules.openForCurrent()
-    }
-    footer: StatusBar {
-        session: appSession
-        onSettingsRequested: settings.openPage(3)
+        onTranslationRequested: rules.openForCurrent()
     }
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
         Rectangle {
-            visible: !!window.desktop.notice || !!browser.loadError
+            visible: !!window.desktop.notice || !!browser.loadError || ["unsupported_messages", "ambiguous"].includes(appSession.state.chat_detection)
             Layout.fillWidth: true
             implicitHeight: noticeRow.implicitHeight + 20
             color: Tokens.accentTint
@@ -150,7 +148,7 @@ SK.ApplicationWindow {
                 anchors.margins: 10
                 spacing: 12
                 Text {
-                    text: window.desktop.notice || browser.loadError
+                    text: window.desktop.notice || browser.loadError || appSession.chatHint
                     textFormat: Text.PlainText
                     color: window.desktop.noticeKind === "success" ? Tokens.accent : Tokens.warning
                     wrapMode: Text.WordWrap
@@ -158,6 +156,12 @@ SK.ApplicationWindow {
                     font.pixelSize: 12
                 }
                 SK.ToolButton {
+                    visible: !window.desktop.notice && !browser.loadError
+                    text: "Reload WhatsApp"
+                    onClicked: browser.reload()
+                }
+                SK.ToolButton {
+                    visible: !!window.desktop.notice || !!browser.loadError
                     text: "Dismiss"
                     onClicked: {
                         window.desktop.clearNotice();
@@ -168,6 +172,7 @@ SK.ApplicationWindow {
         }
         WhatsAppView {
             id: browser
+            initialUrl: window.initialWhatsAppUrl
             desktop: window.desktop
             translationChannel: window.translationChannel
             Layout.fillWidth: true
@@ -183,14 +188,17 @@ SK.ApplicationWindow {
     SettingsDialog {
         id: settings
         session: appSession
+        iconRoot: window.iconRoot
         parent: window.contentItem
-        onRulesRequested: rules.openForCurrent()
         onReloadRequested: browser.reload()
     }
     RulesDialog {
         id: rules
         session: appSession
         parent: window.contentItem
+        anchorItem: appHeader.translationAnchor
+        onLanguagesRequested: settings.openPage(0)
+        onAccountRequested: settings.openPage(4)
     }
     SK.Popup {
         id: welcome

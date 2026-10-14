@@ -20,22 +20,19 @@ ColumnLayout {
                 font.pixelSize: 14
                 Layout.fillWidth: true
             }
-            SK.ComboBox {
+            ChoiceBox {
+                objectName: "readingViewChoice"
                 Layout.preferredWidth: 250
                 model: ["Translation first", "Both languages"]
-                currentIndex: root.settings.session.viewPreferences.reading_view
-                              === "both_languages" ? 1 : 0
+                currentIndex: root.settings.session.viewPreferences.reading_view === "both_languages" ? 1 : 0
                 enabled: !root.settings.session.starting
-                onActivated: root.settings.session.setPreference("reading_view", currentIndex === 1
-                                                                 ? "both_languages" :
-                                                                   "translation_first")
+                onActivated: root.settings.session.setPreference("reading_view", currentIndex === 1 ? "both_languages" : "translation_first")
                 Accessible.name: "Message display"
             }
         }
         PreferenceSwitch {
             Layout.fillWidth: true
             title: "Translate my sent messages"
-            description: "Include your sent messages."
             checked: root.settings.session.viewPreferences.include_sent
             enabled: !root.settings.session.starting
             onToggled: value => root.settings.session.setPreference("include_sent", value)
@@ -75,19 +72,10 @@ ColumnLayout {
         PreferenceSwitch {
             Layout.fillWidth: true
             title: "Focus on one chat"
-            description: "Hide chats. Press " + root.settings.session.focusShortcut
-                         + " to bring it back."
+            description: "Hide the chat list. " + root.settings.session.focusShortcut + " restores it."
             checked: root.settings.session.focusChat
             enabled: !root.settings.session.starting && !root.settings.session.focusPending
             onToggled: value => root.settings.session.setPreference("focus_chat", value)
-        }
-        SK.ToolButton {
-            text: "Chat preferences"
-            enabled: root.settings.session.canEditRules
-            onClicked: {
-                root.settings.close();
-                root.settings.rulesRequested();
-            }
         }
     }
 }

@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QQmlApplicationEngine>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
@@ -79,6 +80,33 @@ private Q_SLOTS:
         qApp->installEventFilter(filter);
         QTRY_VERIFY_WITH_TIMEOUT(!finished.isEmpty(), 15000);
         QVERIFY2(check.passed, qPrintable(check.detail));
+    }
+    void quietCompanionProductionShellLoadsOffline() {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        QQmlApplicationEngine engine;
+        engine.setInitialProperties({{"fixtureRoot", profile.path()}});
+        engine.load(QUrl::fromLocalFile(
+            QStringLiteral(WISP_SOURCE_DIR "/tests/native/fixtures/shell.qml")));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        auto* shell = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+        QVERIFY(shell);
+        QVERIFY(!shell->property("footer").value<QObject*>());
+        auto* browser = shell->findChild<QQuickItem*>("whatsappView");
+        QVERIFY(browser);
+        QCOMPARE(browser->property("url").toUrl(), QUrl("about:blank"));
+        auto* translation = shell->findChild<QQuickItem*>("chatTranslationButton");
+        auto* settings = shell->findChild<QQuickItem*>("settingsButton");
+        QVERIFY(translation && settings);
+        QCOMPARE(settings->property("text").toString(), QStringLiteral("App settings"));
+        for (const QString& name :
+             {QStringLiteral("languages"), QStringLiteral("voice"), QStringLiteral("reading"),
+              QStringLiteral("defaults"), QStringLiteral("account"), QStringLiteral("rules")}) {
+            QVERIFY(QMetaObject::invokeMethod(shell, "openFixturePanel", Q_ARG(QVariant, name)));
+            QTest::qWait(30);
+        }
+        QVERIFY(QMetaObject::invokeMethod(shell, "updateFixtureTheme", Q_ARG(QVariant, true)));
+        QVERIFY(QMetaObject::invokeMethod(shell, "updateFixtureTheme", Q_ARG(QVariant, false)));
     }
     void voiceSourceCrossesOnlyTheMediaUrlBetweenWorlds() {
         EditingCheck check;

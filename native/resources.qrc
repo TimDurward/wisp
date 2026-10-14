@@ -5,6 +5,9 @@
 <file alias="qml/Main.qml">../qml/Main.qml</file>
 <file alias="qml/components/Header.qml">../qml/components/Header.qml</file>
 <file alias="qml/components/PanelScrollView.qml">../qml/components/PanelScrollView.qml</file>
+<file alias="qml/components/CompactScrollBar.qml">../qml/components/CompactScrollBar.qml</file>
+<file alias="qml/components/ChoiceBox.qml">../qml/components/ChoiceBox.qml</file>
+<file alias="qml/components/CustomLanguageDialog.qml">../qml/components/CustomLanguageDialog.qml</file>
 <file alias="qml/components/PreferenceSwitch.qml">../qml/components/PreferenceSwitch.qml</file>
 <file alias="qml/components/RuleEditor.qml">../qml/components/RuleEditor.qml</file>
 <file alias="qml/components/RulesDialog.qml">../qml/components/RulesDialog.qml</file>
@@ -16,6 +19,7 @@
 <file alias="qml/pages/AccountPage.qml">../qml/pages/AccountPage.qml</file>
 <file alias="qml/pages/ChatPage.qml">../qml/pages/ChatPage.qml</file>
 <file alias="qml/pages/LanguagesPage.qml">../qml/pages/LanguagesPage.qml</file>
+<file alias="qml/pages/VoicePage.qml">../qml/pages/VoicePage.qml</file>
 <file alias="qml/pages/StylePage.qml">../qml/pages/StylePage.qml</file>
 <file alias="qml/services/DraftEditor.qml">../qml/services/DraftEditor.qml</file>
 <file alias="qml/services/Session.qml">../qml/services/Session.qml</file>
@@ -26,5 +30,12 @@
 <file alias="assets/icons/settings.svg">../assets/icons/settings.svg</file>
 <file alias="assets/icons/tune.svg">../assets/icons/tune.svg</file>
 <file alias="assets/wisp.svg">../assets/wisp.svg</file>
+<file alias="assets/icons/languages.svg">../assets/icons/languages.svg</file>
+<file alias="assets/icons/mic.svg">../assets/icons/mic.svg</file>
+<file alias="assets/icons/message-square.svg">../assets/icons/message-square.svg</file>
+<file alias="assets/icons/user-round.svg">../assets/icons/user-round.svg</file>
+<file alias="assets/icons/chevron-down.svg">../assets/icons/chevron-down.svg</file>
+<file alias="assets/icons/close.svg">../assets/icons/close.svg</file>
+<file alias="assets/icons/arrow-left.svg">../assets/icons/arrow-left.svg</file>
 </qresource>
 </RCC>

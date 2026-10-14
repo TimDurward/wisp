@@ -11,25 +11,35 @@ ColumnLayout {
     spacing: 16
     SettingsCard {
         Layout.fillWidth: true
-        heading: "Translation languages"
+        heading: "Languages"
         description: "Source language is detected automatically."
         RowLayout {
             Layout.fillWidth: true
             spacing: 20
             ColumnLayout {
                 Layout.fillWidth: true
-                Text {
-                    text: "Read messages in"
-                    color: Tokens.muted
-                    font.pixelSize: 12
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        text: "Read messages in"
+                        color: Tokens.muted
+                        font.pixelSize: 12
+                        Layout.fillWidth: true
+                    }
+                    SK.ToolButton {
+                        text: "Add…"
+                        enabled: !root.settings.session.starting && !root.settings.saving
+                        onClicked: root.settings.openCustomLanguage("reading")
+                        Accessible.name: "Add a reading language or region"
+                    }
                 }
-                SK.ComboBox {
+                ChoiceBox {
+                    objectName: "readingLanguageChoice"
                     Layout.fillWidth: true
                     model: root.settings.languages
                     textRole: "label"
                     valueRole: "id"
-                    currentIndex: root.settings.languages.findIndex(item => item.id
-                                                                            === root.settings.readingLanguage)
+                    currentIndex: root.settings.languages.findIndex(item => item.id === root.settings.readingLanguage)
                     enabled: !root.settings.session.starting && !root.settings.saving
                     onActivated: root.settings.readingLanguage = currentValue
                     Accessible.name: "Reading language"
@@ -37,18 +47,28 @@ ColumnLayout {
             }
             ColumnLayout {
                 Layout.fillWidth: true
-                Text {
-                    text: "Write replies in"
-                    color: Tokens.muted
-                    font.pixelSize: 12
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        text: "Write replies in"
+                        color: Tokens.muted
+                        font.pixelSize: 12
+                        Layout.fillWidth: true
+                    }
+                    SK.ToolButton {
+                        text: "Add…"
+                        enabled: !root.settings.session.starting && !root.settings.saving
+                        onClicked: root.settings.openCustomLanguage("reply")
+                        Accessible.name: "Add a reply language or region"
+                    }
                 }
-                SK.ComboBox {
+                ChoiceBox {
+                    objectName: "replyLanguageChoice"
                     Layout.fillWidth: true
                     model: root.settings.languages
                     textRole: "label"
                     valueRole: "id"
-                    currentIndex: root.settings.languages.findIndex(item => item.id
-                                                                            === root.settings.replyLanguage)
+                    currentIndex: root.settings.languages.findIndex(item => item.id === root.settings.replyLanguage)
                     enabled: !root.settings.session.starting && !root.settings.saving
                     onActivated: root.settings.replyLanguage = currentValue
                     Accessible.name: "Reply language"
@@ -56,8 +76,7 @@ ColumnLayout {
             }
         }
         RowLayout {
-            visible: root.settings.readingLanguage === "spanish" || root.settings.replyLanguage
-                     === "spanish"
+            visible: root.settings.readingLanguage === "spanish" || root.settings.replyLanguage === "spanish"
             Layout.fillWidth: true
             spacing: 20
             ColumnLayout {
@@ -76,13 +95,12 @@ ColumnLayout {
                     Layout.fillWidth: true
                 }
             }
-            SK.ComboBox {
+            ChoiceBox {
                 Layout.preferredWidth: 220
                 model: root.settings.variants
                 textRole: "label"
                 valueRole: "id"
-                currentIndex: root.settings.variants.findIndex(item => item.id
-                                                                       === root.settings.spanishVariant)
+                currentIndex: root.settings.variants.findIndex(item => item.id === root.settings.spanishVariant)
                 enabled: !root.settings.session.starting && !root.settings.saving
                 onActivated: root.settings.spanishVariant = currentValue
                 Accessible.name: "Spanish regional style"
@@ -90,7 +108,7 @@ ColumnLayout {
         }
     }
     Text {
-        text: "Defaults for enabled chats."
+        text: "Applies to all translated chats."
         color: Tokens.muted
         font.pixelSize: 12
         wrapMode: Text.WordWrap

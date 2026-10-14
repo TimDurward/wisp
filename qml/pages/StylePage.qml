@@ -12,13 +12,13 @@ ColumnLayout {
     Layout.fillWidth: true
     spacing: 12
     Text {
-        text: "Global translation rules"
+        text: "Translation rules"
         color: Tokens.ink
         font.pixelSize: 16
-        font.weight: Font.DemiBold
+        font.weight: Font.Medium
     }
     Text {
-        text: "Set tone, punctuation, or wording. Chat rules take priority."
+        text: "Chat rules take priority."
         color: Tokens.muted
         font.pixelSize: 13
         wrapMode: Text.WordWrap

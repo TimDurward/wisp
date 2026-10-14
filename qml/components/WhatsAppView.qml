@@ -8,6 +8,7 @@ WebEngineView {
     required property var desktop
     required property var translationChannel
     property string loadError: ""
+    property url initialUrl: "https://web.whatsapp.com/"
     objectName: "whatsappView"
     backgroundColor: Tokens.canvas
     webChannel: WebChannel {
@@ -44,14 +45,12 @@ WebEngineView {
     Component.onCompleted: {
         const persistentProfile = profileConfiguration.instance();
         if (!persistentProfile) {
-            root.loadError
-                    = "The WhatsApp profile is already in use. Close the other Wisp window and try again.";
+            root.loadError = "The WhatsApp profile is already in use. Close the other Wisp window and try again.";
             return;
         }
         // Keep Qt's real Chromium/platform versions; remove only the embedding token
         // that WhatsApp's browser detection treats as an unsupported browser.
-        persistentProfile.httpUserAgent = persistentProfile.httpUserAgent.replace(
-                    /\sQtWebEngine\/\S+/g, "");
+        persistentProfile.httpUserAgent = persistentProfile.httpUserAgent.replace(/\sQtWebEngine\/\S+/g, "");
         profile = persistentProfile;
         const script = WebEngine.script();
         script.name = "wisp-translation";
@@ -67,10 +66,10 @@ WebEngineView {
         voice.worldId = WebEngineScript.MainWorld;
         voice.runsOnSubFrames = false;
         userScripts.insert(voice);
-        url = "https://web.whatsapp.com/";
+        url = root.initialUrl;
     }
     onNavigationRequested: request => {
-        if (!request.isMainFrame || root.desktop.isWhatsApp(request.url))
+        if (!request.isMainFrame || root.desktop.isWhatsApp(request.url) || (root.initialUrl.toString() === "about:blank" && request.url.toString() === "about:blank"))
             return;
         request.reject();
         if (request.navigationType === WebEngineNavigationRequest.LinkClickedNavigation)
