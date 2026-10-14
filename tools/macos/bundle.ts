@@ -3,11 +3,15 @@ import path from 'node:path';
 import { run } from '../process.ts';
 
 export function dependencies(output: string): string[] {
-  return output
-    .split('\n')
-    .slice(1)
-    .filter((line) => line.trim())
-    .map((line) => line.trim().split(' (', 1)[0]!);
+  // Universal binaries have a header per architecture; only indented dependency entries count.
+  return [
+    ...new Set(
+      output.split('\n').flatMap((line) => {
+        const match = /^\s+(.+) \(compatibility version [^)]+\)\s*$/.exec(line);
+        return match ? [match[1]!] : [];
+      }),
+    ),
+  ];
 }
 export function inside(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);

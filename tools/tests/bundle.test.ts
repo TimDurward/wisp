@@ -19,6 +19,17 @@ test('otool parsing preserves spaces and framework paths', () => {
     ),
   ).toEqual(['@rpath/QtCore.framework/Versions/A/QtCore', '@loader_path/My Library.dylib']);
 });
+test('otool parsing ignores universal architecture headers and deduplicates dependencies', () => {
+  const binary = '/tmp/Wisp.app/Contents/Frameworks/QtCore.framework/Versions/A/QtCore';
+  const entries =
+    '\t@rpath/QtCore.framework/Versions/A/QtCore (compatibility version 6.0.0, current version 6.11.2)\n' +
+    '\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)\n';
+  expect(
+    dependencies(
+      `${binary} (architecture x86_64):\n${entries}${binary} (architecture arm64):\n${entries}`,
+    ),
+  ).toEqual(['@rpath/QtCore.framework/Versions/A/QtCore', '/usr/lib/libSystem.B.dylib']);
+});
 test('containment rejects parent traversal and sibling directories', () => {
   const root = path.resolve('fixture.app');
   expect(inside(root, path.join(root, 'Contents/Frameworks'))).toBe(true);
@@ -101,7 +112,7 @@ describe('framework deployment', () => {
   });
 
   test.skipIf(process.platform !== 'darwin')(
-    'runs independently of the SDK with a transitive shared library',
+    'runs independently of the SDK with universal frameworks and a transitive library',
     () => {
       const sources = fileURLToPath(new URL('fixtures/bundle/', import.meta.url));
       const libraries = path.join(fixture, 'lib');
@@ -115,6 +126,10 @@ describe('framework deployment', () => {
       fs.mkdirSync(path.dirname(executable), { recursive: true });
       fs.mkdirSync(path.join(bundle, 'Contents/Frameworks'), { recursive: true });
       run('clang++', [
+        '-arch',
+        'arm64',
+        '-arch',
+        'x86_64',
         '-dynamiclib',
         path.join(sources, 'dependency.cpp'),
         '-o',
@@ -124,6 +139,10 @@ describe('framework deployment', () => {
       fs.symlinkSync(dependency, dependencyAlias);
       const frameworkBinary = path.join(framework, 'Versions/A/QtWispFixture');
       run('clang++', [
+        '-arch',
+        'arm64',
+        '-arch',
+        'x86_64',
         '-dynamiclib',
         path.join(sources, 'framework.cpp'),
         dependencyAlias,
@@ -143,6 +162,18 @@ describe('framework deployment', () => {
       expect(
         fs.lstatSync(path.join(bundle, 'Contents/Frameworks/libwisp-fixture.dylib')).isFile(),
       ).toBe(true);
+      const deployed = path.join(
+        bundle,
+        'Contents/Frameworks/QtWispFixture.framework/Versions/A/QtWispFixture',
+      );
+      expect(
+        dependencies(run('otool', ['-L', deployed])).filter(
+          (reference) => !reference.startsWith('/usr/lib/'),
+        ),
+      ).toEqual([
+        '@rpath/QtWispFixture.framework/Versions/A/QtWispFixture',
+        '@rpath/libwisp-fixture.dylib',
+      ]);
     },
   );
 });
