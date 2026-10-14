@@ -17,6 +17,6 @@ Connect WhatsApp and ChatGPT, then enable translation for a chat. Credentials st
 
 I built Wisp for my own use, and shared it in case it helps you too. It’s a small hobby project, issues and pull requests are welcome.
 
-Currently macOS only. If you’d like Windows or Linux support, open an issue; releases for other platforms can follow if there’s interest.
+Currently macOS 14+ only. If you’d like Windows or Linux support, open an issue; releases for other platforms can follow if there’s interest.
 
-[Build for macOS](docs/development.md#build) · [Development](docs/development.md) · [Releases](docs/development.md#releases) · [License](LICENSE)
+[Download](https://github.com/TimDurward/wisp/releases) · [Install](docs/development.md#install) · [Build for macOS](docs/development.md#build) · [Development](docs/development.md) · [License](LICENSE)

@@ -45,6 +45,17 @@ cargo run --locked -- --smoke --data-dir=/tmp/wisp-check --screenshot=/tmp/wisp.
 
 Qt StyleKit is a technology preview in Qt 6.11. Validate upgrades. Automated accessibility inspection crashes the tested Qt Cocoa backend, so authenticated app checks still require manual interaction. CI and fixture checks do not certify WhatsApp compatibility or live account eligibility.
 
+## Install
+
+Requires macOS 14 or later.
+
+1. Download a ZIP from [GitHub Releases](https://github.com/TimDurward/wisp/releases). Choose `arm64` for Apple Silicon (M-series) or `x64` for Intel; Apple menu → **About This Mac** shows which you have.
+2. Unzip it and drag **Wisp.app** to **Applications**.
+3. Open Wisp from Applications.
+4. If macOS says the developer cannot be verified or Apple cannot check the app, and you trust the download, open **System Settings → Privacy & Security → Open Anyway** for Wisp, then confirm **Open**.
+
+These builds aren't Apple-notarized. Approval may be requested again after updates. [Apple's first-launch instructions](https://support.apple.com/en-us/102445) explain this app-specific exception.
+
 ## Build
 
 On macOS, install Xcode Command Line Tools and Rust (rustup), then:

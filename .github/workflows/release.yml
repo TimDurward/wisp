@@ -89,8 +89,13 @@ jobs:
           cat > release-notes.md <<'NOTES'
           Wisp for macOS 14+, with separate Apple Silicon and Intel downloads.
 
-          These community builds are ad hoc signed and are not Apple notarized.
-          The source and build instructions are available in the repository.
+          Choose **arm64** for Apple Silicon (M-series) or **x64** for Intel. Apple menu → **About This Mac** shows which you have.
+
+          1. Download and unzip the matching ZIP.
+          2. Drag **Wisp.app** to **Applications**, then open it.
+          3. If macOS cannot verify the developer or check the app, and you trust the download, go to **System Settings → Privacy & Security → Open Anyway** for Wisp, then confirm **Open**.
+
+          These builds aren't Apple-notarized. Approval may be requested again after updates. [Apple's first-launch instructions](https://support.apple.com/en-us/102445) explain this app-specific exception.
           NOTES
           gh release create "$RELEASE_TAG" ./*.zip ./*.sha256 \
             --verify-tag --draft --title "Wisp $RELEASE_TAG" --notes-file release-notes.md
