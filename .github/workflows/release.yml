@@ -20,7 +20,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     env:
-      QMAKE: qmake
       MACOSX_DEPLOYMENT_TARGET: '14.0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -42,6 +41,11 @@ jobs:
           version: 6.11.2
           modules: qtwebengine qtwebchannel qtpositioning qtshadertools
           cache: true
+      - name: Select Qt
+        run: |
+          qmake_path="$QT_ROOT_DIR/bin/qmake"
+          "$qmake_path" -query QT_VERSION
+          echo "QMAKE=$qmake_path" >> "$GITHUB_ENV"
       - name: Validate release version
         run: test "$GITHUB_REF_NAME" = "v$(node tools/project.ts)"
       - run: npm ci

@@ -59,9 +59,15 @@ jobs:
           version: 6.11.2
           modules: qtwebengine qtwebchannel qtpositioning qtshadertools
           cache: true
+          # PyPI's aqtinstall 3.3.0 predates Qt 6.11's Windows archive layout.
+          aqtsource: ${{ runner.os == 'Windows' && 'git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7' || '' }}
       - name: Select Qt
         shell: bash
-        run: echo 'QMAKE=qmake' >> "$GITHUB_ENV"
+        run: |
+          qmake_path="$QT_ROOT_DIR/bin/qmake"
+          if [ "$RUNNER_OS" = Windows ]; then qmake_path="$qmake_path.exe"; fi
+          "$qmake_path" -query QT_VERSION
+          echo "QMAKE=$qmake_path" >> "$GITHUB_ENV"
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libnss3 libxss1 libasound2t64 libxcb-cursor0
       - run: npm ci
