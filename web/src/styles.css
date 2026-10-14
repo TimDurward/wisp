@@ -133,9 +133,22 @@ body.dark [data-wisp],
   opacity: 0.55;
   cursor: default;
 }
+.wisp-compose-width {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+.wisp-compose-input,
+.wisp-compose-input * {
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+}
 .wisp-compose-shell {
   padding-top: calc(var(--wisp-native-top, 0px) + var(--wisp-preview-space, 0px)) !important;
-  min-height: calc(var(--wisp-native-height, 0px) + var(--wisp-preview-space, 0px)) !important;
+  min-height: var(--wisp-native-height, 0px) !important;
+  height: auto !important;
+  max-height: none !important;
 }
 .wisp-composer {
   position: fixed;
@@ -154,6 +167,7 @@ body.dark [data-wisp],
   display: flex;
   align-items: baseline;
   gap: 10px;
+  min-width: 0;
 }
 .wisp-draft-language {
   flex-shrink: 0;
@@ -161,6 +175,8 @@ body.dark [data-wisp],
   opacity: 0.65;
 }
 .wisp-preview-text {
+  flex: 1;
+  min-width: 0;
   max-height: 110px;
   overflow: auto;
   color: inherit;
@@ -174,6 +190,7 @@ body.dark [data-wisp],
 }
 .wisp-preview-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 8px 12px;
@@ -181,13 +198,25 @@ body.dark [data-wisp],
   font-size: 10px;
 }
 .wisp-draft-status {
+  overflow-wrap: anywhere;
   opacity: 0.65;
 }
 .wisp-draft-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
   gap: 10px;
+}
+[data-wisp] a {
+  color: var(--wisp-accent);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+[data-wisp] a:focus-visible {
+  outline: 2px solid var(--wisp-accent);
+  outline-offset: 2px;
 }
 .wisp-draft-actions button {
   padding: 2px 4px;
@@ -196,6 +225,7 @@ body.dark [data-wisp],
   background: transparent;
   color: inherit;
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 .wisp-draft-actions .wisp-prepare {
   color: var(--wisp-accent);

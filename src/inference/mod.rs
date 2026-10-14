@@ -207,6 +207,7 @@ pub async fn translate(
     preferences: &crate::preferences::TranslationPreferences,
     mut on_delta: impl FnMut(&str),
 ) -> Result<String> {
+    let protected = translation::links::ProtectedLinks::new(&request.text);
     let response = client
         .post("https://api.openai.com/v1/responses")
         .bearer_auth(token)
@@ -225,14 +226,14 @@ pub async fn translate(
     while let Some(chunk) = chunks.next().await {
         for value in parser.push(&chunk?)? {
             if stream.event(&value)? {
-                on_delta(&stream.text);
+                on_delta(&protected.progress(&stream.text));
             }
             if stream.completed {
-                return stream.finish();
+                return protected.finish(&stream.finish()?);
             }
         }
     }
-    stream.finish()
+    protected.finish(&stream.finish()?)
 }
 
 #[cfg(test)]

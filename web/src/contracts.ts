@@ -27,6 +27,7 @@ export interface View extends Chat {
 export interface ComposerSlot {
   input: HTMLElement;
   panel: HTMLElement;
+  boundary?: HTMLElement;
   sendRoot?: HTMLElement;
   kind?: 'attachment';
 }

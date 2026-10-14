@@ -107,8 +107,7 @@ void DesktopController::openUsage() {
     QDesktopServices::openUrl(QUrl(QStringLiteral("https://chatgpt.com/settings/usage")));
 }
 void DesktopController::openExternal(const QUrl& url) {
-    if (url.scheme() == QStringLiteral("https") && url.userName().isEmpty() &&
-        url.password().isEmpty()) {
+    if (externalWebUrl(url)) {
         QDesktopServices::openUrl(url);
     }
 }

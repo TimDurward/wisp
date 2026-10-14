@@ -2,6 +2,11 @@
 #define WISP_WEBORIGIN_H
 #include <QUrl>
 namespace wisp {
+inline bool externalWebUrl(const QUrl& url) {
+    return url.isValid() && !url.host().isEmpty() &&
+           (url.scheme() == QStringLiteral("https") || url.scheme() == QStringLiteral("http")) &&
+           url.userName().isEmpty() && url.password().isEmpty();
+}
 inline bool whatsAppOrigin(const QUrl& url) {
     return url.scheme() == QStringLiteral("https") &&
            url.host() == QStringLiteral("web.whatsapp.com") &&

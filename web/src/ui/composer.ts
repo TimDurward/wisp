@@ -1,5 +1,7 @@
 import { install, element, button } from './dom';
 import { positionOriginal } from './reading';
+import { linkedText } from './links';
+import { onlyLinks } from '../links';
 import type { ComposerSlot, ComposerActions, DraftState } from '../contracts';
 export function composer(slot: ComposerSlot, actions: ComposerActions) {
   install();
@@ -23,36 +25,75 @@ export function composer(slot: ComposerSlot, actions: ComposerActions) {
   bottom.append(status, controls);
   panel.append(translation, bottom);
   document.body.append(panel);
-  const nativeStyle = getComputedStyle(slot.panel);
-  const nativeTop = parseFloat(nativeStyle.paddingTop) || 0;
-  const nativeHeight = slot.panel.getBoundingClientRect().height;
-  let reserved = -1,
-    frame: number | undefined;
+  let frame: number | undefined;
+  const widths = new Set<HTMLElement>();
+  // Every nested flex item between the editor and chat pane must be allowed
+  // to shrink. Fixing only the editor still lets an outer wrapper overflow.
+  function constrainWidth() {
+    const next = new Set<HTMLElement>(),
+      boundary = slot.boundary || slot.panel;
+    for (
+      let node: HTMLElement | null = slot.input;
+      node && node !== document.body && node !== document.documentElement;
+      node = node.parentElement
+    ) {
+      next.add(node);
+      if (node === boundary) break;
+    }
+    for (const node of widths) {
+      if (next.has(node)) continue;
+      node.classList.remove('wisp-compose-width');
+      if (node !== slot.input && node !== slot.panel) resize?.unobserve(node);
+      widths.delete(node);
+    }
+    for (const node of next) {
+      node.classList.add('wisp-compose-width');
+      if (!widths.has(node)) resize?.observe(node);
+      widths.add(node);
+    }
+    slot.input.classList.add('wisp-compose-input');
+  }
+  function restore() {
+    slot.panel.classList.remove('wisp-compose-shell');
+    for (const name of ['--wisp-native-top', '--wisp-native-height', '--wisp-preview-space'])
+      slot.panel.style.removeProperty(name);
+  }
   function place() {
     frame = undefined;
     if (!panel.isConnected || !slot.input.isConnected) return;
+    constrainWidth();
     if (panel.hidden) {
-      slot.panel.classList.remove('wisp-compose-shell');
-      reserved = -1;
+      restore();
       return;
     }
-    const host = slot.panel.getBoundingClientRect(),
+    // Measure the current native layout without our reserved space. Link cards,
+    // quoted replies and multiline drafts can change its height after binding.
+    slot.panel.classList.remove('wisp-compose-shell');
+    const nativeStyle = getComputedStyle(slot.panel),
+      nativeTop = parseFloat(nativeStyle.paddingTop) || 0,
+      nativeHeight = slot.panel.getBoundingClientRect().height,
+      host = slot.panel.getBoundingClientRect(),
       input = slot.input.getBoundingClientRect();
-    const left = Math.max(host.left + 12, input.left - 12),
-      right = Math.min(host.right - 12, input.right + 12);
+    const boundary = slot.boundary?.getBoundingClientRect(),
+      pane = boundary?.width ? boundary : host,
+      left = Math.max(12, pane.left + 12, host.left + 12, input.left - 12),
+      right = Math.min(innerWidth - 12, pane.right - 12, host.right - 12, input.right + 12);
     panel.style.left = left + 'px';
     panel.style.width = Math.max(0, right - left) + 'px';
-    panel.style.top = host.top + nativeTop + 8 + 'px';
     panel.style.color = getComputedStyle(slot.input).color;
     const height = Math.ceil(panel.getBoundingClientRect().height) + 16;
-    if (height !== reserved) {
-      reserved = height;
-      slot.panel.style.setProperty('--wisp-native-top', nativeTop + 'px');
-      slot.panel.style.setProperty('--wisp-native-height', nativeHeight + 'px');
-      slot.panel.style.setProperty('--wisp-preview-space', height + 'px');
-      slot.panel.classList.add('wisp-compose-shell');
-      relocate();
-    }
+    const chrome =
+      nativeTop +
+      (parseFloat(nativeStyle.paddingBottom) || 0) +
+      (parseFloat(nativeStyle.borderTopWidth) || 0) +
+      (parseFloat(nativeStyle.borderBottomWidth) || 0);
+    const minimum =
+      nativeStyle.boxSizing === 'border-box' ? nativeHeight + height : nativeHeight - chrome;
+    slot.panel.style.setProperty('--wisp-native-top', nativeTop + 'px');
+    slot.panel.style.setProperty('--wisp-native-height', Math.max(0, minimum) + 'px');
+    slot.panel.style.setProperty('--wisp-preview-space', height + 'px');
+    slot.panel.classList.add('wisp-compose-shell');
+    panel.style.top = slot.panel.getBoundingClientRect().top + nativeTop + 8 + 'px';
     positionOriginal();
   }
   function relocate() {
@@ -60,6 +101,8 @@ export function composer(slot: ComposerSlot, actions: ComposerActions) {
   }
   const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(relocate);
   for (const node of [slot.input, slot.panel, panel]) resize?.observe(node);
+  const contents = new MutationObserver(relocate);
+  contents.observe(slot.panel, { childList: true, subtree: true, characterData: true });
   window.addEventListener('resize', relocate);
   window.addEventListener('wisp-layout', relocate);
   document.addEventListener('scroll', relocate, true);
@@ -76,9 +119,10 @@ export function composer(slot: ComposerSlot, actions: ComposerActions) {
       label.title = detail;
       const prepared = state.mode === 'translated',
         busy = state.phase === 'preparing';
-      panel.hidden = !state.source;
+      panel.hidden = !state.source || onlyLinks(state.source);
       translation.hidden = prepared || !state.text;
-      preview.textContent = state.text || '';
+      if (state.phase === 'ready') linkedText(preview, state.text || '');
+      else preview.textContent = state.text || '';
       preview.classList.toggle('wisp-stale', state.phase !== 'ready');
       previewButton.hidden = prepared || (state.livePreview && state.phase !== 'error');
       previewButton.disabled = !state.source || state.phase === 'translating' || busy;
@@ -110,12 +154,14 @@ export function composer(slot: ComposerSlot, actions: ComposerActions) {
     remove() {
       cancelAnimationFrame(frame ?? 0);
       resize?.disconnect();
+      contents.disconnect();
       window.removeEventListener('resize', relocate);
       window.removeEventListener('wisp-layout', relocate);
       document.removeEventListener('scroll', relocate, true);
-      slot.panel.classList.remove('wisp-compose-shell');
-      for (const name of ['--wisp-native-top', '--wisp-native-height', '--wisp-preview-space'])
-        slot.panel.style.removeProperty(name);
+      restore();
+      for (const node of widths) node.classList.remove('wisp-compose-width');
+      widths.clear();
+      slot.input.classList.remove('wisp-compose-input');
       panel.remove();
     },
   };

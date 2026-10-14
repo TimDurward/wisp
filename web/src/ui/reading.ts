@@ -1,4 +1,5 @@
 import { install, element, button } from './dom';
+import { linkedText } from './links';
 import type { Message, ReadingOptions } from '../contracts';
 let originalPopup: HTMLDivElement | null = null,
   popupOwner: HTMLButtonElement | null = null,
@@ -69,7 +70,8 @@ function showOriginal(anchor: HTMLButtonElement, text: string) {
     document.body.append(originalPopup);
   }
   const heading = element('small', '', 'Original message'),
-    body = element('div', '', text);
+    body = element('div', '');
+  linkedText(body, text);
   body.dir = 'auto';
   originalPopup.replaceChildren(heading, body);
   originalPopup.hidden = false;
@@ -135,6 +137,7 @@ export function reading(message: Message, text: string | null, options: ReadingO
     }
   }
   const body = element('div', 'wisp-translation-text', text);
+  if (!options.error && !options.loading) linkedText(body, text);
   body.dir = 'auto';
   line.append(caption, body);
   if (options.retry) line.append(button('Try again', options.retry));

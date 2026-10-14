@@ -3,7 +3,7 @@ use super::*;
 impl Engine {
     pub(super) async fn translate(&self, request: TranslationRequest) -> Result<()> {
         let (generation, options, rules, preferences, epoch) = {
-            let state = self.state.lock().await;
+            let mut state = self.state.lock().await;
             ensure!(
                 state.conversation == request.conversation
                     && state.storage.enabled(&request.conversation),
@@ -15,6 +15,14 @@ impl Engine {
                     || state.storage.settings.view_preferences.include_sent,
                 "Reading translation is disabled for sent messages"
             );
+            if translation::links::only_links(&request.text) {
+                let generation = state.generation;
+                if state.valid_request(&request, generation) {
+                    state.remember_reply(&request, &request.text, generation);
+                    self.emit_page(json!({"type":"translation","request_id":request.request_id,"conversation":request.conversation,"text":request.text,"cached":false}));
+                }
+                return Ok(());
+            }
             if request.purpose == TranslationPurpose::Reading {
                 let key = translation::history_key(
                     &request.conversation,

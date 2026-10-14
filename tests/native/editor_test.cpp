@@ -1,6 +1,7 @@
 // Isolated Qt editing regression harness. Never packaged with Wisp.
 #include "wisp/Editor.h"
 #include "wisp/FocusShortcutFilter.h"
+#include "wisp/WebOrigin.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -46,6 +47,14 @@ Q_SIGNALS:
 class EditorTest final : public QObject {
     Q_OBJECT
 private Q_SLOTS:
+    void linksOnlyOpenWebUrls() {
+        QVERIFY(wisp::externalWebUrl(QUrl("https://example.com/path?q=1#here")));
+        QVERIFY(wisp::externalWebUrl(QUrl("http://example.com/path")));
+        for (const auto* url : {"javascript:alert(1)", "file:///tmp/file",
+                                "https://user:pass@example.com", "https:"}) {
+            QVERIFY(!wisp::externalWebUrl(QUrl(url)));
+        }
+    }
     void nativeInputAndPresentation() {
         EditingCheck check;
         check.root = QStringLiteral(WISP_SOURCE_DIR);

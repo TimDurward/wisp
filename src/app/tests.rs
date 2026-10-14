@@ -1,5 +1,37 @@
 use super::*;
 #[tokio::test]
+async fn link_only_messages_return_unchanged_without_sign_in_or_a_model() {
+    let fixture = tempfile::tempdir().unwrap();
+    let events = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let received = events.clone();
+    let engine = Engine::new(
+        fixture.path().to_path_buf(),
+        Arc::new(move |_, event| received.lock().unwrap().push(event)),
+    )
+    .unwrap();
+    {
+        let mut state = engine.state.lock().await;
+        state.conversation = "chat".into();
+        state.storage.set_enabled("chat", true).unwrap();
+    }
+    let text = "https://share.google/ExactPath?q=one%20two#entrance";
+    engine.clone().page_json(json!({"type":"translate","request_id":"link","conversation":"chat","message_id":"draft:link","direction":"outgoing","purpose":"reply","text":text}).to_string(), 1).await;
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"] == "translation" && event["text"] == text)
+    );
+    assert!(
+        !events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"] == "translation_error")
+    );
+}
+#[tokio::test]
 async fn thinking_commands_require_current_catalog_model_and_supported_effort() {
     let fixture = tempfile::tempdir().unwrap();
     let dir = fixture.path().to_path_buf();

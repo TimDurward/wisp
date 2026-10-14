@@ -2,6 +2,58 @@ import { element, required } from './support/fixtures';
 import { test, expect } from 'vitest';
 import { setup } from './support/harness';
 
+test('link-only messages keep native previews without requesting a translation', async () => {
+  const app = setup();
+  try {
+    element(app.w.document, '.selectable-text').textContent =
+      'https://example.com/ExactPath?q=1#here';
+    app.start();
+    app.emit({ type: 'config', conversation: '123@lid', revision: 1, enabled: true });
+    await app.flush();
+    expect(app.requests('translate').length).toBe(0);
+    expect(app.w.document.querySelector('.wisp-inline')).toBeNull();
+  } finally {
+    app.dom.window.close();
+  }
+});
+
+for (const completed of [false, true]) {
+  test(`editing a translated message to a URL removes stale translation UI (completed=${completed})`, async () => {
+    const app = setup();
+    try {
+      app.start();
+      app.emit({ type: 'config', conversation: '123@lid', revision: 1, enabled: true });
+      await app.flush();
+      const request = required(
+        app.requests('translate').find((value) => value.purpose === 'reading'),
+      );
+      if (completed)
+        app.emit({
+          type: 'translation',
+          conversation: request.conversation,
+          request_id: request.request_id,
+          text: 'Hello',
+        });
+      const source = element(app.w.document, '.selectable-text');
+      source.textContent = 'https://example.com/ExactPath';
+      await app.flush();
+      app.emit({
+        type: 'translation',
+        conversation: request.conversation,
+        request_id: request.request_id,
+        text: 'Stale result',
+      });
+      expect(app.w.document.querySelector('.wisp-inline')).toBeNull();
+      expect(source.classList.contains('wisp-original-text')).toBe(false);
+      expect(app.requests('translate').filter((value) => value.purpose === 'reading').length).toBe(
+        1,
+      );
+    } finally {
+      app.dom.window.close();
+    }
+  });
+}
+
 test('unknown or conflicting chat identities fail closed', () => {
   const { dom, w } = setup();
   try {

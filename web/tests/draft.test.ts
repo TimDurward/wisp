@@ -2,6 +2,33 @@ import { element, required } from './support/fixtures';
 import { test, expect } from 'vitest';
 import { setup } from './support/harness';
 
+test('link-only drafts skip previews and resume translating when prose is added', async () => {
+  const app = setup();
+  try {
+    app.start();
+    app.emit({
+      type: 'config',
+      conversation: '123@lid',
+      revision: 1,
+      enabled: true,
+      view_preferences: { live_preview: true },
+    });
+    const input = element(app.w.document, '[contenteditable]');
+    input.textContent = 'https://share.google/ExactPath?place=city%20park#entrance';
+    app.dispatchInput('input', input);
+    await app.advance(3000);
+    expect(app.requests('translate').filter((v) => v.purpose === 'reply').length).toBe(0);
+    expect(element(app.w.document, '.wisp-composer').hidden).toBe(true);
+    expect(element(app.w.document, 'footer').classList.contains('wisp-compose-shell')).toBe(false);
+    input.textContent = 'Meet me at ' + input.textContent;
+    app.dispatchInput('input', input);
+    await app.advance(3000);
+    expect(app.requests('translate').filter((v) => v.purpose === 'reply').length).toBe(1);
+  } finally {
+    app.dom.window.close();
+  }
+});
+
 test('outgoing previews neither replace the draft nor send it', async () => {
   const app = setup();
   try {

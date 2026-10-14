@@ -1,5 +1,6 @@
 import { WhatsApp } from '../whatsapp';
 import { UI } from '../ui';
+import { onlyLinks } from '../links';
 import type {
   Message,
   ContextLine,
@@ -215,6 +216,16 @@ export function createReadingQueue(services: ReadingServices) {
         (m) => (preferences.include_sent || m.direction === 'incoming') && WhatsApp.visible(m),
       )
       .slice(-64)) {
+      if (onlyLinks(message.text)) {
+        for (const [id, item] of pending)
+          if (item.message.id === message.id) cancelReading(id, item);
+        for (let index = queue.length - 1; index >= 0; index--)
+          if (queue[index]!.message.id === message.id) queue.splice(index, 1);
+        results.delete(message.id);
+        processed.set(message.id, message.text);
+        UI.clearMessage(message);
+        continue;
+      }
       const completed = results.get(message.id);
       if (completed?.source === message.text) {
         if (!message.element.querySelector('.wisp-inline')) renderResult(message, completed);

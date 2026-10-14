@@ -1,5 +1,52 @@
 use super::*;
 #[test]
+fn model_requests_hide_urls_and_link_caches_are_separate_from_existing_translations() {
+    let request = TranslationRequest {
+        request_id: "r".into(),
+        conversation: "c".into(),
+        message_id: "m".into(),
+        direction: Direction::Outgoing,
+        purpose: TranslationPurpose::Reply,
+        text: "Meet me https://share.google/ExactPath?q=one%20two#here at 5".into(),
+        context: vec![],
+    };
+    let preferences = TranslationPreferences::default();
+    let body = body("model", &request, "", &preferences);
+    let input: Value = serde_json::from_str(body["input"][0]["content"].as_str().unwrap()).unwrap();
+    assert!(
+        !input["message_to_translate"]
+            .as_str()
+            .unwrap()
+            .contains("share.google")
+    );
+    assert!(
+        input["message_to_translate"]
+            .as_str()
+            .unwrap()
+            .contains("⟦WISP_LINK_")
+    );
+    assert!(
+        body["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("Never translate, rewrite, remove or expand")
+    );
+    let old = hash(
+        &json!([
+            "wisp-prompt-v2",
+            "",
+            "a",
+            "model",
+            "c",
+            "outgoing",
+            request.text,
+            request.context
+        ])
+        .to_string(),
+    );
+    assert_ne!(old, cache_key("a", "model", &request, "", &preferences, 0));
+}
+#[test]
 fn reading_sent_messages_and_preparing_replies_have_distinct_languages_and_cache_entries() {
     let mut request = TranslationRequest {
         request_id: "r".into(),

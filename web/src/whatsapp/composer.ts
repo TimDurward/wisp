@@ -71,7 +71,7 @@ export function attachmentComposer(
       (main.contains(panel) && panel.querySelector<HTMLElement>(selectors.message))
     )
       continue;
-    candidates.set(input, { input, panel, sendRoot: scope, kind: 'attachment' });
+    candidates.set(input, { input, panel, boundary: scope, sendRoot: scope, kind: 'attachment' });
   }
   return { present, slot: candidates.size === 1 ? [...candidates.values()][0]! : null };
 }
@@ -102,7 +102,7 @@ export function composer(
       break;
     }
   }
-  return panel && panel !== main ? { input, panel } : null;
+  return panel && panel !== main ? { input, panel, boundary: main } : null;
 }
 
 export function draft(

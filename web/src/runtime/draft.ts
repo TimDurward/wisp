@@ -1,5 +1,6 @@
 import { WhatsApp } from '../whatsapp';
 import { UI } from '../ui';
+import { onlyLinks } from '../links';
 import type {
   Config,
   ComposerSlot,
@@ -104,7 +105,7 @@ export function createDraft({ submit, context, isCurrentView }: DraftServices) {
     cancel();
     state.source = source;
     state.error = '';
-    if (!source) {
+    if (!source || onlyLinks(source)) {
       originalSource = '';
       Object.assign(state, { text: '', phase: 'empty', mode: 'source', originalSource: '' });
     } else if (state.mode === 'translated') {
@@ -136,7 +137,7 @@ export function createDraft({ submit, context, isCurrentView }: DraftServices) {
       return;
     changed();
     const source = WhatsApp.draft(main);
-    if (!source || request?.source === source) return;
+    if (!source || onlyLinks(source) || request?.source === source) return;
     if (WhatsApp.byteLength(source) > 8000) {
       state.error = 'This draft is too long to translate.';
       state.phase = 'error';
@@ -385,7 +386,9 @@ export function createDraft({ submit, context, isCurrentView }: DraftServices) {
       enterPrepares: prefs.enter_prepares,
       hasRules: !!nextConfig.has_rules,
       replyLabel: nextConfig.reply_label || 'Spanish · Peru',
-      replyLanguageLabel: replyLanguage.charAt(0).toUpperCase() + replyLanguage.slice(1),
+      replyLanguageLabel:
+        nextConfig.reply_label?.split(' · ')[0] ||
+        replyLanguage.charAt(0).toUpperCase() + replyLanguage.slice(1),
     });
     if (!ui?.element.isConnected) ui = UI.composer(slot, { preview, prepare, edit, copy });
     changed();
@@ -443,7 +446,7 @@ export function createDraft({ submit, context, isCurrentView }: DraftServices) {
         event.stopImmediatePropagation();
         return;
       }
-      if (state.mode === 'translated' && !pendingEdit) return;
+      if (!pendingEdit && (state.mode === 'translated' || onlyLinks(WhatsApp.draft(main)))) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       prepare();
@@ -458,6 +461,7 @@ export function createDraft({ submit, context, isCurrentView }: DraftServices) {
         !config ||
         !state.enterPrepares ||
         (state.mode === 'translated' && !pendingEdit) ||
+        (!pendingEdit && onlyLinks(WhatsApp.draft(main))) ||
         !WhatsApp.sendAction(event.target instanceof Element ? event.target : null, main)
       )
         return;
