@@ -3,10 +3,12 @@ mod auth;
 mod conversation;
 mod desktop;
 mod inference;
+mod languages;
 mod model_options;
 mod platform;
 mod preferences;
 mod protocol;
+mod speech;
 mod storage;
 mod translation;
 

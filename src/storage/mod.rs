@@ -1,6 +1,7 @@
 mod persistence;
 use crate::preferences::{
-    ConversationPreferences, TranslationPreferences, ViewPreferences, normalize_rules,
+    ConversationPreferences, CustomLanguage, Language, TranslationPreferences, ViewPreferences,
+    normalize_rules,
 };
 use anyhow::{Context, Result, ensure};
 use persistence::private_write;
@@ -46,7 +47,12 @@ pub struct Settings {
     pub message_chats: crate::conversation::MessageAnchors,
     pub view_preferences: ViewPreferences,
     pub translation_preferences: TranslationPreferences,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub custom_languages: Vec<CustomLanguage>,
     pub history_revision: u64,
+    pub voice_enabled: bool,
+    pub voice_max_minutes: Option<u8>,
+    pub voice_auto: Option<bool>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -61,12 +67,24 @@ struct SavedMessage {
     text: String,
     chat_hash: String,
 }
+#[derive(Clone, Deserialize, Serialize)]
+struct SavedTranscript {
+    transcript: crate::speech::Transcript,
+    chat_hash: String,
+    #[serde(default)]
+    message_hash: String,
+    #[serde(default)]
+    language_override: Option<String>,
+    #[serde(default)]
+    selected_at: u64,
+}
 
 pub struct Storage {
     root: PathBuf,
     pub settings: Settings,
     cache: BTreeMap<String, CacheEntry>,
     messages: BTreeMap<String, SavedMessage>,
+    transcripts: BTreeMap<String, SavedTranscript>,
 }
 
 impl Storage {
@@ -92,6 +110,12 @@ impl Storage {
         if settings.host_id.is_empty() {
             settings.host_id = format!("urn:uuid:{}", uuid::Uuid::new_v4());
         }
+        if settings
+            .voice_max_minutes
+            .is_none_or(|n| ![5, 10, 20, 30].contains(&n))
+        {
+            settings.voice_max_minutes = Some(10);
+        }
         // Preserve opt-ins from the original settings format.
         for (key, enabled) in std::mem::take(&mut settings.enabled) {
             settings
@@ -111,11 +135,17 @@ impl Storage {
             .transpose()
             .context("Cannot read saved message translations")?
             .unwrap_or_default();
+        let transcripts = read("voice-transcripts.json")?
+            .map(|data| serde_json::from_slice(&data))
+            .transpose()
+            .context("Cannot read saved voice transcripts")?
+            .unwrap_or_default();
         let mut storage = Self {
             root,
             settings,
             cache,
             messages,
+            transcripts,
         };
         storage.prune();
         storage.save()?;
@@ -126,6 +156,103 @@ impl Storage {
             &self.root.join("settings.json"),
             &serde_json::to_vec_pretty(&self.settings)?,
         )
+    }
+    pub fn transcript(&self, key: &str, conversation: &str) -> Option<crate::speech::Transcript> {
+        self.transcripts
+            .get(key)
+            .filter(|saved| saved.chat_hash == hash(conversation))
+            .map(|saved| saved.transcript.clone())
+    }
+    pub fn save_transcript(
+        &mut self,
+        key: String,
+        conversation: &str,
+        transcript: crate::speech::Transcript,
+    ) -> Result<()> {
+        let previous = self.transcripts.insert(
+            key.clone(),
+            SavedTranscript {
+                transcript,
+                chat_hash: hash(conversation),
+                message_hash: String::new(),
+                language_override: None,
+                selected_at: 0,
+            },
+        );
+        if let Err(error) = self.persist_transcripts() {
+            if let Some(previous) = previous {
+                self.transcripts.insert(key, previous);
+            } else {
+                self.transcripts.remove(&key);
+            }
+            return Err(error);
+        }
+        Ok(())
+    }
+    fn persist_transcripts(&self) -> Result<()> {
+        private_write(
+            &self.root.join("voice-transcripts.json"),
+            &serde_json::to_vec(&self.transcripts)?,
+        )
+    }
+    pub fn remember_voice(
+        &mut self,
+        conversation: &str,
+        message_id: &str,
+        language: Option<&str>,
+    ) -> Result<()> {
+        let key = crate::speech::cache_key(conversation, message_id, language);
+        let selected_at = self
+            .transcripts
+            .values()
+            .map(|v| v.selected_at)
+            .max()
+            .unwrap_or_default()
+            .saturating_add(1);
+        let Some(saved) = self
+            .transcripts
+            .get_mut(&key)
+            .filter(|v| v.chat_hash == hash(conversation))
+        else {
+            return Ok(());
+        };
+        let previous = saved.clone();
+        saved.message_hash = crate::conversation::message_hash(message_id);
+        saved.language_override = language.map(str::to_owned);
+        saved.selected_at = selected_at;
+        if let Err(error) = self.persist_transcripts() {
+            self.transcripts.insert(key, previous);
+            return Err(error);
+        }
+        Ok(())
+    }
+    pub fn voice_transcript(
+        &self,
+        conversation: &str,
+        message_id: &str,
+    ) -> Option<(crate::speech::Transcript, Option<String>)> {
+        let chat_hash = hash(conversation);
+        let message_hash = crate::conversation::message_hash(message_id);
+        if let Some(saved) = self
+            .transcripts
+            .values()
+            .filter(|v| v.chat_hash == chat_hash && v.message_hash == message_hash)
+            .max_by_key(|v| v.selected_at)
+        {
+            return Some((saved.transcript.clone(), saved.language_override.clone()));
+        }
+        let automatic = crate::speech::cache_key(conversation, message_id, None);
+        if let Some(transcript) = self.transcript(&automatic, conversation) {
+            return Some((transcript, None));
+        }
+        crate::languages::ALL.iter().find_map(|(code, _)| {
+            let key = crate::speech::cache_key(conversation, message_id, Some(code));
+            self.transcript(&key, conversation)
+                .map(|transcript| (transcript, Some((*code).to_owned())))
+        })
+    }
+    pub fn transcript_count(&self) -> usize {
+        self.transcripts.len()
     }
     pub fn enabled(&self, conversation: &str) -> bool {
         self.settings
@@ -197,9 +324,36 @@ impl Storage {
         &mut self,
         preferences: TranslationPreferences,
     ) -> Result<()> {
+        for language in [&preferences.reading_language, &preferences.reply_language] {
+            if let Language::Custom(language) = language {
+                ensure!(
+                    self.settings.custom_languages.contains(language),
+                    "Add this language before selecting it"
+                );
+            }
+        }
         let previous = std::mem::replace(&mut self.settings.translation_preferences, preferences);
         if let Err(error) = self.save() {
             self.settings.translation_preferences = previous;
+            return Err(error);
+        }
+        Ok(())
+    }
+    pub fn add_language(&mut self, language: CustomLanguage) -> Result<()> {
+        let language = language.normalized()?;
+        if self.settings.custom_languages.iter().any(|saved| {
+            saved.name.to_lowercase() == language.name.to_lowercase()
+                && saved.region.to_lowercase() == language.region.to_lowercase()
+        }) {
+            return Ok(());
+        }
+        ensure!(
+            self.settings.custom_languages.len() < 64,
+            "You can save up to 64 custom languages and regions"
+        );
+        self.settings.custom_languages.push(language);
+        if let Err(error) = self.save() {
+            self.settings.custom_languages.pop();
             return Err(error);
         }
         Ok(())
@@ -305,6 +459,8 @@ impl Storage {
         )
     }
     pub fn clear_cache(&mut self) -> Result<()> {
+        private_write(&self.root.join("voice-transcripts.json"), b"{}")?;
+        self.transcripts.clear();
         private_write(&self.root.join("saved-messages.json"), b"{}")?;
         self.messages.clear();
         private_write(&self.root.join("translations.json"), b"{}")?;
@@ -315,6 +471,17 @@ impl Storage {
     }
     pub fn clear_chat_cache(&mut self, conversation: &str) -> Result<()> {
         let chat = hash(conversation);
+        let transcripts: BTreeMap<_, _> = self
+            .transcripts
+            .iter()
+            .filter(|(_, entry)| entry.chat_hash != chat)
+            .map(|(key, entry)| (key.clone(), entry.clone()))
+            .collect();
+        private_write(
+            &self.root.join("voice-transcripts.json"),
+            &serde_json::to_vec(&transcripts)?,
+        )?;
+        self.transcripts = transcripts;
         let messages: BTreeMap<_, _> = self
             .messages
             .iter()

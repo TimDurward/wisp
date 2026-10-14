@@ -1,5 +1,134 @@
 use super::*;
 #[test]
+fn voice_restore_remembers_the_last_override_and_supports_legacy_records() {
+    let fixture = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open(fixture.path().to_path_buf()).unwrap();
+    let note = "false_123@lid_PRIVATE_NOTE_ID";
+    let original = crate::speech::Transcript {
+        text: "Mañana".into(),
+        language: "es".into(),
+        confidence: Some(0.95),
+        review: false,
+    };
+    storage
+        .save_transcript(
+            crate::speech::cache_key("chat", note, None),
+            "chat",
+            original.clone(),
+        )
+        .unwrap();
+    assert_eq!(storage.voice_transcript("chat", note).unwrap().1, None);
+    assert!(storage.voice_transcript("other", note).is_none());
+    storage.remember_voice("chat", note, None).unwrap();
+    storage
+        .save_transcript(
+            crate::speech::cache_key("chat", note, Some("es")),
+            "chat",
+            original,
+        )
+        .unwrap();
+    storage.remember_voice("chat", note, Some("es")).unwrap();
+    let mut storage = Storage::open(fixture.path().to_path_buf()).unwrap();
+    assert_eq!(
+        storage.voice_transcript("chat", note).unwrap().1.as_deref(),
+        Some("es")
+    );
+    assert!(
+        !fs::read_to_string(fixture.path().join("voice-transcripts.json"))
+            .unwrap()
+            .contains(note)
+    );
+    storage.clear_chat_cache("chat").unwrap();
+    assert!(storage.voice_transcript("chat", note).is_none());
+}
+#[test]
+fn voice_settings_and_original_transcripts_persist_with_chat_scoping() {
+    let fixture = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open(fixture.path().to_path_buf()).unwrap();
+    assert!(!storage.settings.voice_enabled);
+    assert_eq!(storage.settings.voice_max_minutes, Some(10));
+    storage.settings.voice_enabled = true;
+    storage.settings.voice_max_minutes = Some(20);
+    storage.settings.translation_preferences.reading_language =
+        serde_json::from_str::<Language>(r#""sw""#).unwrap();
+    storage.save().unwrap();
+    let original = crate::speech::Transcript {
+        text: "Mañana en el parque".into(),
+        language: "es".into(),
+        confidence: Some(0.95),
+        review: true,
+    };
+    storage
+        .save_transcript("a-key".into(), "a", original.clone())
+        .unwrap();
+    storage
+        .save_transcript("b-key".into(), "b", original)
+        .unwrap();
+    let mut storage = Storage::open(fixture.path().to_path_buf()).unwrap();
+    assert!(storage.settings.voice_enabled);
+    assert_eq!(storage.settings.voice_max_minutes, Some(20));
+    assert_eq!(
+        storage
+            .settings
+            .translation_preferences
+            .reading_language
+            .label(),
+        "Swahili"
+    );
+    assert_eq!(
+        storage.transcript("a-key", "a").unwrap().text,
+        "Mañana en el parque"
+    );
+    assert!(storage.transcript("a-key", "b").is_none());
+    storage.clear_chat_cache("a").unwrap();
+    assert!(storage.transcript("a-key", "a").is_none());
+    assert!(storage.transcript("b-key", "b").is_some());
+    storage.clear_cache().unwrap();
+    assert_eq!(
+        Storage::open(fixture.path().to_path_buf())
+            .unwrap()
+            .transcript_count(),
+        0
+    );
+}
+#[test]
+fn custom_languages_and_regions_persist_and_cannot_be_selected_before_being_added() {
+    let fixture = tempfile::tempdir().unwrap();
+    let dir = fixture.path().to_path_buf();
+    let mut storage = Storage::open(dir.clone()).unwrap();
+    let language = CustomLanguage {
+        name: "Tamil".into(),
+        region: "Sri Lanka".into(),
+    };
+    let preferences = TranslationPreferences {
+        reply_language: Language::Custom(language.clone()),
+        ..Default::default()
+    };
+    assert!(
+        storage
+            .set_translation_preferences(preferences.clone())
+            .is_err()
+    );
+    assert_eq!(
+        storage.settings.translation_preferences,
+        TranslationPreferences::default()
+    );
+    storage.add_language(language.clone()).unwrap();
+    storage
+        .add_language(CustomLanguage {
+            name: " tamil ".into(),
+            region: "sri lanka".into(),
+        })
+        .unwrap();
+    assert_eq!(storage.settings.custom_languages.len(), 1);
+    storage
+        .set_translation_preferences(preferences.clone())
+        .unwrap();
+    let storage = Storage::open(dir).unwrap();
+    assert_eq!(storage.settings.translation_preferences, preferences);
+    assert_eq!(storage.settings.custom_languages, vec![language]);
+}
+#[test]
 fn reasoning_choices_persist_per_model_and_default_can_be_restored() {
     use crate::model_options::ReasoningEffort;
     let fixture = tempfile::tempdir().unwrap();

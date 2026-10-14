@@ -23,9 +23,11 @@ subtle = "2"
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "io-util", "time", "macros"] }
 uuid = { version = "1", features = ["v4"] }
+whisper-rs = { version = "0.16", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
+whisper-rs = { version = "0.16", default-features = false, features = ["metal"] }
 
 [build-dependencies]
 cxx-qt-build = "0.10"

@@ -32,6 +32,7 @@
 /saved-messages.json
 **/translations.json
 **/saved-messages.json
+**/voice-transcripts.json
 **/focus-layout-*.json
 **/whatsapp/
 !/web/src/whatsapp/

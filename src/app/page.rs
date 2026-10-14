@@ -3,6 +3,15 @@ use super::*;
 impl Engine {
     pub async fn page(self: Arc<Self>, request: PageRequest, sequence: u64) {
         match request {
+            PageRequest::Appearance { dark } => {
+                self.emit_desktop(json!({"type":"appearance","dark":dark}))
+            }
+            request @ (PageRequest::VoiceBegin(_)
+            | PageRequest::SavedVoice(_)
+            | PageRequest::VoiceAudio { .. }
+            | PageRequest::VoiceFinish { .. }
+            | PageRequest::VoiceCancel { .. }
+            | PageRequest::SpeechDownload { .. }) => self.voice_page(request).await,
             PageRequest::SavedMessages {
                 request_id,
                 conversation,
@@ -53,8 +62,11 @@ impl Engine {
                     return;
                 }
                 state.active_sequence = sequence;
+                state.message_ids = message_ids.clone();
                 state.detection = detection;
-                let conversation = if !message_ids.is_empty() {
+                let conversation = if !message_ids.is_empty()
+                    || (matches!(detection, ConversationDetection::Empty) && !view_id.is_empty())
+                {
                     let previous = (state.view_id == view_id && !state.conversation.is_empty())
                         .then(|| state.conversation.clone());
                     match state.storage.identify_chat(
@@ -73,6 +85,12 @@ impl Engine {
                     conversation
                 };
                 if state.conversation != conversation || state.view_id != view_id {
+                    if let Some((audio, _)) = state.voice_transfer.take() {
+                        audio
+                            .cancelled
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        state.requests.remove(&audio.request_id);
+                    }
                     state.generation += 1;
                     state.conversation = conversation;
                 }

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 pub const MAX_RULES_CHARS: usize = 2_000;
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Language {
     English,
@@ -16,9 +16,47 @@ pub enum Language {
     Korean,
     Chinese,
     Arabic,
+    #[serde(untagged)]
+    Catalog(String),
+    #[serde(untagged)]
+    Custom(CustomLanguage),
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CustomLanguage {
+    pub name: String,
+    #[serde(default)]
+    pub region: String,
+}
+impl CustomLanguage {
+    pub fn normalized(self) -> Result<Self> {
+        let language = Self {
+            name: self.name.trim().to_owned(),
+            region: self.region.trim().to_owned(),
+        };
+        ensure!(!language.name.is_empty(), "Enter a language name");
+        for label in [&language.name, &language.region] {
+            ensure!(
+                label.chars().count() <= 80,
+                "Keep language and region names under 80 characters"
+            );
+            ensure!(
+                !label.chars().any(char::is_control),
+                "Language and region names must be single-line text"
+            );
+        }
+        Ok(language)
+    }
+    pub fn label(&self) -> String {
+        if self.region.is_empty() {
+            self.name.clone()
+        } else {
+            format!("{} · {}", self.name, self.region)
+        }
+    }
 }
 impl Language {
-    pub const ALL: [Self; 10] = [
+    pub const PRESETS: [Self; 10] = [
         Self::English,
         Self::Spanish,
         Self::Portuguese,
@@ -30,7 +68,37 @@ impl Language {
         Self::Chinese,
         Self::Arabic,
     ];
-    pub fn label(self) -> &'static str {
+    pub fn all() -> Vec<Self> {
+        let mut items = Self::PRESETS.to_vec();
+        items.extend(crate::languages::ALL.iter().filter_map(|(code, _)| {
+            let language = Self::from_code(code);
+            matches!(language, Self::Catalog(_)).then_some(language)
+        }));
+        items
+    }
+    fn from_code(code: &str) -> Self {
+        match code {
+            "en" => Self::English,
+            "es" => Self::Spanish,
+            "pt" => Self::Portuguese,
+            "fr" => Self::French,
+            "de" => Self::German,
+            "it" => Self::Italian,
+            "ja" => Self::Japanese,
+            "ko" => Self::Korean,
+            "zh" => Self::Chinese,
+            "ar" => Self::Arabic,
+            _ => Self::Catalog(code.to_owned()),
+        }
+    }
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::Custom(language) => crate::languages::code(&language.name),
+            Self::Catalog(code) => crate::languages::code(code),
+            _ => crate::languages::code(&self.label()),
+        }
+    }
+    pub fn label(&self) -> String {
         match self {
             Self::English => "English",
             Self::Spanish => "Spanish",
@@ -42,6 +110,35 @@ impl Language {
             Self::Korean => "Korean",
             Self::Chinese => "Chinese",
             Self::Arabic => "Arabic",
+            Self::Catalog(code) => crate::languages::label(code).unwrap_or(code),
+            Self::Custom(language) => return language.label(),
+        }
+        .to_owned()
+    }
+    pub fn id(&self) -> String {
+        match self {
+            Self::Custom(language) => format!(
+                "custom:{}",
+                crate::storage::hash(&serde_json::to_string(language).unwrap())
+            ),
+            _ => serde_json::to_value(self)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_owned(),
+        }
+    }
+    pub fn normalized(self) -> Result<Self> {
+        match self {
+            Self::Catalog(code) => {
+                ensure!(
+                    crate::languages::label(&code).is_some(),
+                    "Unknown language code"
+                );
+                Ok(Self::from_code(&code))
+            }
+            Self::Custom(language) => Ok(Self::Custom(language.normalized()?)),
+            _ => Ok(self),
         }
     }
 }
@@ -101,11 +198,11 @@ impl Default for TranslationPreferences {
     }
 }
 impl TranslationPreferences {
-    pub fn target_label(&self, language: Language) -> String {
-        if language == Language::Spanish {
+    pub fn target_label(&self, language: &Language) -> String {
+        if language == &Language::Spanish {
             format!("Spanish · {}", self.spanish_variant.label())
         } else {
-            language.label().to_owned()
+            language.label()
         }
     }
 }

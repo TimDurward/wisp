@@ -10,7 +10,7 @@ impl Engine {
                 "Translation is disabled for this conversation"
             );
             ensure!(
-                request.purpose != TranslationPurpose::Reading
+                request.purpose == TranslationPurpose::Reply
                     || request.direction != Direction::Outgoing
                     || state.storage.settings.view_preferences.include_sent,
                 "Reading translation is disabled for sent messages"
@@ -23,12 +23,9 @@ impl Engine {
                 }
                 return Ok(());
             }
-            if request.purpose == TranslationPurpose::Reading {
-                let key = translation::history_key(
-                    &request.conversation,
-                    &request.message_id,
-                    request.direction,
-                    &request.text,
+            if request.purpose != TranslationPurpose::Reply {
+                let key = translation::saved_key(
+                    &request,
                     &state.storage.settings.translation_preferences,
                 );
                 if let Some(text) = state.storage.saved_message(&key, &request.conversation) {
@@ -77,19 +74,13 @@ impl Engine {
             &preferences,
             epoch,
         );
-        let history_key = translation::history_key(
-            &request.conversation,
-            &request.message_id,
-            request.direction,
-            &request.text,
-            &preferences,
-        );
+        let history_key = translation::saved_key(&request, &preferences);
         let cached = self.state.lock().await.storage.cached(&key);
         if let Some(text) = cached {
             let mut state = self.state.lock().await;
             if state.valid_request(&request, generation) {
                 state.remember_reply(&request, &text, generation);
-                if request.purpose == TranslationPurpose::Reading
+                if request.purpose != TranslationPurpose::Reply
                     && state
                         .storage
                         .save_message(history_key, &request.conversation, text.clone())
@@ -168,7 +159,7 @@ impl Engine {
         let mut state = self.state.lock().await;
         if state.valid_request(&request, generation) {
             state.remember_reply(&request, &text, generation);
-            let saved = if request.purpose == TranslationPurpose::Reading {
+            let saved = if request.purpose != TranslationPurpose::Reply {
                 state
                     .storage
                     .save_message(history_key, &request.conversation, text.clone())

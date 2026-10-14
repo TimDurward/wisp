@@ -1,8 +1,85 @@
 use super::*;
 #[tokio::test]
-async fn link_only_messages_return_unchanged_without_sign_in_or_a_model() {
+async fn saved_voice_restores_raw_and_translated_text_without_a_model_or_account() {
     let fixture = tempfile::tempdir().unwrap();
     let events = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let received = events.clone();
+    let engine = Engine::new(
+        fixture.path().to_path_buf(),
+        Arc::new(move |_, event| received.lock().unwrap().push(event)),
+    )
+    .unwrap();
+    let request = crate::protocol::VoiceRequest {
+        retranscribe: false,
+        request_id: "restore".into(),
+        conversation: "chat".into(),
+        view_id: "view".into(),
+        message_id: "note".into(),
+        direction: Direction::Incoming,
+        language: None,
+        context: vec![],
+    };
+    {
+        let mut state = engine.state.lock().await;
+        state.conversation = "chat".into();
+        state.view_id = "view".into();
+        state.message_ids = vec!["note".into()];
+        state.storage.set_enabled("chat", true).unwrap();
+        state.storage.settings.active_account = Some("account".into());
+        state.storage.settings.model = Some("model".into());
+        state
+            .storage
+            .save_transcript(
+                crate::speech::cache_key("chat", "note", None),
+                "chat",
+                crate::speech::Transcript {
+                    text: "Mañana".into(),
+                    language: "es".into(),
+                    confidence: Some(0.99),
+                    review: false,
+                },
+            )
+            .unwrap();
+        let translation = TranslationRequest {
+            request_id: "old".into(),
+            conversation: "chat".into(),
+            message_id: "note".into(),
+            direction: Direction::Incoming,
+            purpose: TranslationPurpose::Voice,
+            text: "Mañana".into(),
+            context: vec![],
+        };
+        let options = inference::Options::new("model".into(), None);
+        let key = translation::cache_key(
+            "account",
+            &options.cache_model(),
+            &translation,
+            "",
+            &state.storage.settings.translation_preferences,
+            0,
+        );
+        state
+            .storage
+            .cache_for_chat(key, "Tomorrow".into(), "chat")
+            .unwrap();
+    }
+    engine
+        .clone()
+        .voice_page(PageRequest::SavedVoice(request.clone()))
+        .await;
+    let first = events
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|e| e["type"] == "voice_saved")
+        .cloned()
+        .unwrap();
+    assert_eq!(first["transcript"]["text"], "Mañana");
+    assert_eq!(first["translation"], "Tomorrow");
+    assert!(engine.state.lock().await.voice_transfer.is_none());
+    assert!(!fixture.path().join("speech").exists());
+    drop(engine);
+    events.lock().unwrap().clear();
     let received = events.clone();
     let engine = Engine::new(
         fixture.path().to_path_buf(),
@@ -12,23 +89,196 @@ async fn link_only_messages_return_unchanged_without_sign_in_or_a_model() {
     {
         let mut state = engine.state.lock().await;
         state.conversation = "chat".into();
-        state.storage.set_enabled("chat", true).unwrap();
+        state.view_id = "view".into();
+        state.message_ids = vec!["note".into()];
+        state.storage.settings.active_account = None;
+        state.storage.settings.model = None;
+        assert!(!state.translation_ready);
     }
-    let text = "https://share.google/ExactPath?q=one%20two#entrance";
-    engine.clone().page_json(json!({"type":"translate","request_id":"link","conversation":"chat","message_id":"draft:link","direction":"outgoing","purpose":"reply","text":text}).to_string(), 1).await;
+    engine
+        .clone()
+        .voice_page(PageRequest::SavedVoice(request.clone()))
+        .await;
     assert!(
         events
             .lock()
             .unwrap()
             .iter()
-            .any(|event| event["type"] == "translation" && event["text"] == text)
+            .any(|e| e["type"] == "voice_saved" && e["translation"] == "Tomorrow")
     );
+    events.lock().unwrap().clear();
+    let mut stale = request.clone();
+    stale.view_id = "other".into();
+    engine
+        .clone()
+        .voice_page(PageRequest::SavedVoice(stale))
+        .await;
+    assert!(events.lock().unwrap().is_empty());
+    engine
+        .state
+        .lock()
+        .await
+        .storage
+        .settings
+        .translation_preferences
+        .reading_language = Language::French;
+    engine
+        .clone()
+        .voice_page(PageRequest::SavedVoice(request))
+        .await;
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e["type"] == "voice_saved"
+                && e["transcript"]["text"] == "Mañana"
+                && e["translation"].is_null())
+    );
+}
+#[tokio::test]
+async fn cached_voice_notes_require_current_view_opt_in_and_message_anchor() {
+    let fixture = tempfile::tempdir().unwrap();
+    let events = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let received = events.clone();
+    let engine = Engine::new(
+        fixture.path().to_path_buf(),
+        Arc::new(move |_, event| received.lock().unwrap().push(event)),
+    )
+    .unwrap();
+    assert!(!engine.speech.status().ready);
+    assert!(!fixture.path().join("speech").exists());
+    {
+        let mut state = engine.state.lock().await;
+        state.conversation = "chat".into();
+        state.view_id = "view".into();
+        state.message_ids = vec!["note".into()];
+        state.storage.set_enabled("chat", true).unwrap();
+        state.storage.settings.voice_enabled = true;
+        state.translation_ready = true;
+        state
+            .storage
+            .save_transcript(
+                crate::speech::cache_key("chat", "note", None),
+                "chat",
+                crate::speech::Transcript {
+                    text: "https://example.com/Original".into(),
+                    language: "en".into(),
+                    confidence: Some(0.99),
+                    review: false,
+                },
+            )
+            .unwrap();
+    }
+    let request = crate::protocol::VoiceRequest {
+        retranscribe: false,
+        request_id: "voice".into(),
+        conversation: "chat".into(),
+        view_id: "view".into(),
+        message_id: "note".into(),
+        direction: Direction::Incoming,
+        language: None,
+        context: vec![],
+    };
+    engine
+        .clone()
+        .voice_page(PageRequest::VoiceBegin(request.clone()))
+        .await;
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e["type"] == "voice_transcript")
+    );
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e["type"] == "translation" && e["text"] == "https://example.com/Original")
+    );
+    assert!(engine.state.lock().await.requests.is_empty());
+    events.lock().unwrap().clear();
+    let mut fresh = request.clone();
+    fresh.request_id = "fresh".into();
+    fresh.retranscribe = true;
+    engine
+        .clone()
+        .voice_page(PageRequest::VoiceBegin(fresh))
+        .await;
+    assert!(events.lock().unwrap().iter().any(|e| {
+        e["type"] == "voice_error"
+            && e["message"]
+                .as_str()
+                .unwrap()
+                .contains("Download the speech model")
+    }));
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|e| e["type"] != "voice_transcript")
+    );
+    assert!(
+        engine
+            .state
+            .lock()
+            .await
+            .storage
+            .transcript(&crate::speech::cache_key("chat", "note", None), "chat")
+            .is_some()
+    );
+    events.lock().unwrap().clear();
+    let mut stale = request.clone();
+    stale.view_id = "other".into();
+    engine
+        .clone()
+        .voice_page(PageRequest::VoiceBegin(stale))
+        .await;
+    assert!(events.lock().unwrap().is_empty());
+    engine.enable_voice(false).await.unwrap();
+    events.lock().unwrap().clear();
+    engine
+        .clone()
+        .voice_page(PageRequest::VoiceBegin(request))
+        .await;
     assert!(
         !events
             .lock()
             .unwrap()
             .iter()
-            .any(|event| event["type"] == "translation_error")
+            .any(|e| e["type"] == "voice_transcript")
+    );
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e["type"] == "voice_error")
+    );
+    engine
+        .native_inner(r#"{"type":"voice_auto","enabled":false}"#)
+        .await
+        .unwrap();
+    assert_eq!(
+        Storage::open(fixture.path().to_path_buf())
+            .unwrap()
+            .settings
+            .voice_auto,
+        Some(false)
+    );
+    engine
+        .native_inner(r#"{"type":"voice_max_minutes","minutes":30}"#)
+        .await
+        .unwrap();
+    assert_eq!(
+        Storage::open(fixture.path().to_path_buf())
+            .unwrap()
+            .settings
+            .voice_max_minutes,
+        Some(30)
     );
 }
 #[tokio::test]
@@ -211,6 +461,152 @@ async fn chat_state_updates_while_authentication_is_waiting() {
     assert!(status.get("credentials").is_none());
     drop(events);
     drop(auth_wait);
+}
+#[tokio::test]
+async fn link_only_messages_return_unchanged_without_sign_in_or_a_model() {
+    let fixture = tempfile::tempdir().unwrap();
+    let events = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let received = events.clone();
+    let engine = Engine::new(
+        fixture.path().to_path_buf(),
+        Arc::new(move |_, event| received.lock().unwrap().push(event)),
+    )
+    .unwrap();
+    {
+        let mut state = engine.state.lock().await;
+        state.conversation = "chat".into();
+        state.storage.set_enabled("chat", true).unwrap();
+    }
+    let text = "https://share.google/ExactPath?q=one%20two#entrance";
+    engine.clone().page_json(json!({"type":"translate","request_id":"link","conversation":"chat","message_id":"draft:link","direction":"outgoing","purpose":"reply","text":text}).to_string(), 1).await;
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"] == "translation" && event["text"] == text)
+    );
+    assert!(
+        !events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"] == "translation_error")
+    );
+}
+#[tokio::test]
+async fn added_languages_are_exposed_in_the_catalog_and_translation_configuration() {
+    let fixture = tempfile::tempdir().unwrap();
+    let events = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let received = events.clone();
+    let engine = Engine::new(
+        fixture.path().to_path_buf(),
+        Arc::new(move |_, event| received.lock().unwrap().push(event)),
+    )
+    .unwrap();
+    engine
+        .clone()
+        .native(json!({"type":"add_language","name":"Tamil","region":"Sri Lanka"}).to_string())
+        .await;
+    let language = crate::preferences::CustomLanguage {
+        name: "Tamil".into(),
+        region: "Sri Lanka".into(),
+    };
+    let id = Language::Custom(language.clone()).id();
+    let catalog = events
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|event| event["type"] == "status")
+        .unwrap()["languages"]
+        .clone();
+    assert_eq!(catalog.as_array().unwrap().len(), 101);
+    let custom = catalog
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == id)
+        .unwrap();
+    assert_eq!(custom["label"], "Tamil · Sri Lanka");
+    assert_eq!(custom["voice_supported"], true);
+    engine.clone().native(json!({"type":"translation_preferences","preferences":{"reply_language":custom["value"]}}).to_string()).await;
+    assert_eq!(
+        engine
+            .state
+            .lock()
+            .await
+            .storage
+            .settings
+            .translation_preferences
+            .reply_language,
+        Language::Custom(language)
+    );
+    let events = events.lock().unwrap();
+    let config = events
+        .iter()
+        .rev()
+        .find(|event| event["type"] == "config")
+        .unwrap();
+    assert_eq!(config["reply_language"], id);
+    assert_eq!(config["reply_label"], "Tamil · Sri Lanka");
+    let status = events
+        .iter()
+        .rev()
+        .find(|event| event["type"] == "status")
+        .unwrap();
+    assert_eq!(status["translation_preferences"]["reply_language"], id);
+}
+#[tokio::test]
+async fn empty_chats_can_be_enabled_and_anchor_their_first_message_without_sharing_titles() {
+    let fixture = tempfile::tempdir().unwrap();
+    let engine = Engine::new(fixture.path().to_path_buf(), Arc::new(|_, _| {})).unwrap();
+    let observe = |view, detection, ids: Vec<&str>| {
+        json!({"type":"active_conversation","view_id":view,"conversation":"","title":"Contact","detection":detection,"message_ids":ids}).to_string()
+    };
+    engine
+        .clone()
+        .page_json(observe("first", "empty", vec![]), 1)
+        .await;
+    let first = engine.state.lock().await.conversation.clone();
+    assert!(first.starts_with("chat:"));
+    engine
+        .clone()
+        .native(json!({"type":"enable","enabled":true,"view_id":"first"}).to_string())
+        .await;
+    let generation = engine.state.lock().await.generation;
+    assert!(engine.valid_generation(&first, generation).await);
+    // Repeated empty observations must not create another identity.
+    engine
+        .clone()
+        .page_json(observe("first", "empty", vec![]), 2)
+        .await;
+    assert_eq!(engine.state.lock().await.conversation, first);
+    let id = "true_123@lid_3EB0A123456789ABCDEF0123456789AB";
+    engine
+        .clone()
+        .page_json(observe("first", "ready", vec![id]), 3)
+        .await;
+    assert_eq!(engine.state.lock().await.conversation, first);
+    assert!(engine.valid_generation(&first, generation).await);
+    engine
+        .clone()
+        .page_json(observe("second", "empty", vec![]), 4)
+        .await;
+    let second = engine.state.lock().await.conversation.clone();
+    assert_ne!(first, second);
+    assert!(!engine.state.lock().await.storage.enabled(&second));
+    engine
+        .clone()
+        .page_json(observe("third", "ready", vec![id]), 5)
+        .await;
+    assert_eq!(engine.state.lock().await.conversation, first);
+    assert!(engine.state.lock().await.storage.enabled(&first));
+    engine
+        .clone()
+        .page_json(observe("third", "unsupported_messages", vec![]), 6)
+        .await;
+    assert!(engine.state.lock().await.conversation.is_empty());
 }
 #[tokio::test]
 async fn modern_chats_with_the_same_title_are_independent_and_view_bound() {
@@ -465,4 +861,29 @@ async fn saved_history_is_local_and_view_bound_even_during_authentication() {
     assert!(state.recent_reading.is_empty());
     drop(state);
     drop(auth_wait);
+}
+
+#[tokio::test]
+async fn appearance_changes_are_ephemeral_and_do_not_change_chat_settings() {
+    let root = tempfile::tempdir().unwrap();
+    let events = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let received = events.clone();
+    let engine = Engine::new(
+        root.path().to_path_buf(),
+        Arc::new(move |_, event| received.lock().unwrap().push(event)),
+    )
+    .unwrap();
+    engine
+        .clone()
+        .page(PageRequest::Appearance { dark: false }, 0)
+        .await;
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"] == "appearance" && event["dark"] == false)
+    );
+    assert!(!engine.state.lock().await.storage.settings.voice_enabled);
+    assert!(engine.state.lock().await.conversation.is_empty());
 }

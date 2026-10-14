@@ -47,6 +47,66 @@ fn model_requests_hide_urls_and_link_caches_are_separate_from_existing_translati
     assert_ne!(old, cache_key("a", "model", &request, "", &preferences, 0));
 }
 #[test]
+fn custom_targets_use_the_region_and_keep_separate_translations() {
+    let mut preferences = TranslationPreferences {
+        reading_language: Language::Custom(crate::preferences::CustomLanguage {
+            name: "Tamil".into(),
+            region: "Sri Lanka".into(),
+        }),
+        reply_language: Language::Custom(crate::preferences::CustomLanguage {
+            name: "English".into(),
+            region: "Scotland".into(),
+        }),
+        ..Default::default()
+    };
+    let mut request = TranslationRequest {
+        request_id: "r".into(),
+        conversation: "c".into(),
+        message_id: "m".into(),
+        direction: Direction::Outgoing,
+        purpose: TranslationPurpose::Reading,
+        text: "Hello".into(),
+        context: vec![],
+    };
+    assert!(
+        body("model", &request, "", &preferences)["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("into natural Tamil as used in Sri Lanka")
+    );
+    let history = history_key("c", "m", request.direction, &request.text, &preferences);
+    let cache = cache_key("a", "model", &request, "", &preferences, 0);
+    preferences.reading_language = Language::Custom(crate::preferences::CustomLanguage {
+        name: "Tamil".into(),
+        region: "India".into(),
+    });
+    assert_ne!(
+        history,
+        history_key("c", "m", request.direction, &request.text, &preferences)
+    );
+    assert_ne!(
+        cache,
+        cache_key("a", "model", &request, "", &preferences, 0)
+    );
+    request.purpose = TranslationPurpose::Reply;
+    assert!(
+        body("model", &request, "", &preferences)["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("into natural English as used in Scotland")
+    );
+    preferences.reply_language = Language::Custom(crate::preferences::CustomLanguage {
+        name: "Swahili".into(),
+        region: String::new(),
+    });
+    assert!(
+        body("model", &request, "", &preferences)["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("into natural Swahili for a personal conversation")
+    );
+}
+#[test]
 fn reading_sent_messages_and_preparing_replies_have_distinct_languages_and_cache_entries() {
     let mut request = TranslationRequest {
         request_id: "r".into(),

@@ -1,4 +1,6 @@
-use crate::preferences::{TranslationPreferences, ViewPreferences, normalize_rules};
+use crate::preferences::{
+    CustomLanguage, TranslationPreferences, ViewPreferences, normalize_rules,
+};
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +21,7 @@ pub enum TranslationPurpose {
     #[default]
     Reading,
     Reply,
+    Voice,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -49,9 +52,27 @@ pub struct MessageProbe {
     pub text: String,
 }
 
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VoiceRequest {
+    pub request_id: String,
+    pub conversation: String,
+    pub view_id: String,
+    pub message_id: String,
+    pub direction: Direction,
+    pub language: Option<String>,
+    #[serde(default)]
+    pub retranscribe: bool,
+    #[serde(default)]
+    pub context: Vec<ContextLine>,
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PageRequest {
+    Appearance {
+        dark: bool,
+    },
     ActiveConversation {
         conversation: String,
         title: String,
@@ -63,6 +84,29 @@ pub enum PageRequest {
         message_ids: Vec<String>,
     },
     Translate(TranslationRequest),
+    VoiceBegin(VoiceRequest),
+    SavedVoice(VoiceRequest),
+    VoiceAudio {
+        request_id: String,
+        conversation: String,
+        view_id: String,
+        index: u32,
+        pcm: String,
+    },
+    VoiceFinish {
+        request_id: String,
+        conversation: String,
+        view_id: String,
+    },
+    VoiceCancel {
+        request_id: String,
+        conversation: String,
+        view_id: String,
+    },
+    SpeechDownload {
+        conversation: String,
+        view_id: String,
+    },
     SavedMessages {
         request_id: String,
         conversation: String,
@@ -92,6 +136,7 @@ pub enum ConversationDetection {
     WaitingForMessages,
     UnsupportedMessages,
     Ambiguous,
+    Empty,
     Ready,
 }
 
@@ -99,6 +144,16 @@ pub enum ConversationDetection {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NativeCommand {
     Status,
+    DownloadSpeechModel,
+    VoiceEnabled {
+        enabled: bool,
+    },
+    VoiceAuto {
+        enabled: bool,
+    },
+    VoiceMaxMinutes {
+        minutes: u8,
+    },
     RefreshModels,
     SignIn {
         #[serde(default)]
@@ -131,6 +186,11 @@ pub enum NativeCommand {
     TranslationPreferences {
         preferences: TranslationPreferences,
     },
+    AddLanguage {
+        name: String,
+        #[serde(default)]
+        region: String,
+    },
     ViewPreferences {
         preferences: ViewPreferences,
     },
@@ -143,12 +203,29 @@ pub fn parse_native(payload: &str) -> Result<NativeCommand> {
     );
     let mut command: NativeCommand = serde_json::from_str(payload)?;
     match &mut command {
+        NativeCommand::VoiceMaxMinutes { minutes } => {
+            ensure!(
+                [5, 10, 20, 30].contains(minutes),
+                "Choose 5, 10, 20 or 30 minutes"
+            );
+        }
         NativeCommand::Rules { view_id, rules } => {
             bounded_id(view_id)?;
             *rules = normalize_rules(rules)?;
         }
         NativeCommand::TranslationPreferences { preferences } => {
-            preferences.global_rules = normalize_rules(&preferences.global_rules)?
+            preferences.global_rules = normalize_rules(&preferences.global_rules)?;
+            preferences.reading_language = preferences.reading_language.clone().normalized()?;
+            preferences.reply_language = preferences.reply_language.clone().normalized()?;
+        }
+        NativeCommand::AddLanguage { name, region } => {
+            let language = CustomLanguage {
+                name: name.clone(),
+                region: region.clone(),
+            }
+            .normalized()?;
+            *name = language.name;
+            *region = language.region;
         }
         NativeCommand::ClearChatCache { view_id } => bounded_id(view_id)?,
         NativeCommand::Enable { view_id, .. } if !view_id.is_empty() => bounded_id(view_id)?,
@@ -193,6 +270,7 @@ pub fn parse_page(payload: &str) -> Result<PageRequest> {
     ensure!(payload.len() <= MAX_PAYLOAD, "Request is too large");
     let request = serde_json::from_str(payload)?;
     match &request {
+        PageRequest::Appearance { .. } => {}
         PageRequest::ActiveConversation {
             conversation,
             title,
@@ -200,7 +278,7 @@ pub fn parse_page(payload: &str) -> Result<PageRequest> {
             message_ids,
             ..
         } => {
-            // Empty identity clears the active conversation on logout or unsupported markup.
+            // Identity may be absent before message anchors or an empty view are registered.
             if !conversation.is_empty() {
                 bounded_id(conversation)?;
             }
@@ -214,6 +292,64 @@ pub fn parse_page(payload: &str) -> Result<PageRequest> {
             }
         }
         PageRequest::Translate(request) => request.validate()?,
+        PageRequest::VoiceBegin(request) | PageRequest::SavedVoice(request) => {
+            for id in [
+                &request.request_id,
+                &request.conversation,
+                &request.view_id,
+                &request.message_id,
+            ] {
+                bounded_id(id)?;
+            }
+            ensure!(
+                request
+                    .language
+                    .as_deref()
+                    .is_none_or(crate::languages::speech_supported),
+                "This language is not supported by the speech model"
+            );
+            ensure!(
+                request.context.len() <= 8
+                    && request.context.iter().all(|line| line.text.len() <= 2_000),
+                "Too much voice-note context"
+            );
+        }
+        PageRequest::VoiceAudio {
+            request_id,
+            conversation,
+            view_id,
+            pcm,
+            ..
+        } => {
+            for id in [request_id, conversation, view_id] {
+                bounded_id(id)?;
+            }
+            ensure!(
+                !pcm.is_empty() && pcm.len() <= crate::speech::CHUNK_BYTES.div_ceil(3) * 4,
+                "Invalid audio chunk"
+            );
+        }
+        PageRequest::VoiceFinish {
+            request_id,
+            conversation,
+            view_id,
+        }
+        | PageRequest::VoiceCancel {
+            request_id,
+            conversation,
+            view_id,
+        } => {
+            for id in [request_id, conversation, view_id] {
+                bounded_id(id)?;
+            }
+        }
+        PageRequest::SpeechDownload {
+            conversation,
+            view_id,
+        } => {
+            bounded_id(conversation)?;
+            bounded_id(view_id)?;
+        }
         PageRequest::SavedMessages {
             request_id,
             conversation,

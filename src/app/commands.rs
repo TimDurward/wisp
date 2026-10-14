@@ -29,6 +29,24 @@ impl Engine {
         };
         match command {
             NativeCommand::Status => {}
+            NativeCommand::DownloadSpeechModel => {
+                let ready = self.speech.status().ready;
+                self.enable_voice(true).await?;
+                if ready {
+                    self.download_speech().await?;
+                }
+            }
+            NativeCommand::VoiceEnabled { enabled } => self.enable_voice(enabled).await?,
+            NativeCommand::VoiceAuto { enabled } => {
+                let mut state = self.state.lock().await;
+                state.storage.settings.voice_auto = Some(enabled);
+                state.storage.save()?;
+            }
+            NativeCommand::VoiceMaxMinutes { minutes } => {
+                let mut state = self.state.lock().await;
+                state.storage.settings.voice_max_minutes = Some(minutes);
+                state.storage.save()?;
+            }
             NativeCommand::RefreshModels => {
                 ensure!(
                     self.auth.lock().await.eligible(),
@@ -206,6 +224,16 @@ impl Engine {
                 state.storage.set_translation_preferences(preferences)?;
                 state.generation += 1;
                 self.emit_desktop(json!({"type":"notice","kind":"success","message":"Translation defaults saved","translation_preferences_saved":true}));
+            }
+            NativeCommand::AddLanguage { name, region } => {
+                self.state
+                    .lock()
+                    .await
+                    .storage
+                    .add_language(crate::preferences::CustomLanguage { name, region })?;
+                self.emit_desktop(
+                    json!({"type":"notice","kind":"success","message":"Language added"}),
+                );
             }
             NativeCommand::ViewPreferences { preferences } => {
                 self.state
