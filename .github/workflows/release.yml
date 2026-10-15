@@ -62,6 +62,16 @@ jobs:
       - name: Validate release version
         shell: bash
         run: test "$GITHUB_REF_NAME" = "v$(node tools/project.ts)"
+      - name: Install Windows license tool
+        if: runner.os == 'Windows'
+        run: |
+          $toolsRoot = Join-Path $env:RUNNER_TEMP 'wisp-release-tools'
+          cargo install cargo-about --version 0.9.2 --locked --root $toolsRoot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $cargoAbout = Join-Path $toolsRoot 'bin/cargo-about.exe'
+          & $cargoAbout --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_ABOUT=$cargoAbout" >> $env:GITHUB_ENV
       - run: npm ci
       - run: npm run check
       - run: npm test
@@ -75,8 +85,6 @@ jobs:
         run: npm run package:mac -- --ad-hoc
       - if: runner.os == 'macOS'
         run: npm run release:mac
-      - if: runner.os == 'Windows'
-        run: cargo install cargo-about --version 0.9.2 --locked
       - if: runner.os == 'Windows'
         run: npm run package:windows
       - if: runner.os == 'Windows'

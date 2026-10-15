@@ -43,6 +43,8 @@ The browser's immediate layout is an accessible pane. Preserve this boundary whe
 
 Packaging requires `cargo-about` (`brew install cargo-about`) to generate dependency notices. `npm run package:mac` stages, relocates, audits, and signs the bundle before replacing `dist/Wisp.app`. The previous bundle is retained while an open app may still use it. `--reuse-runtime` is for rebuilds with unchanged Qt modules and version; use a full build after changing Qt or imports.
 
+Both packagers check `cargo-about` before compiling. Set `CARGO_ABOUT` to its executable path when using a custom tool installation; otherwise it is found on `PATH`.
+
 `WISP_SIGNING_IDENTITY` selects an existing certificate. `--ad-hoc` is explicit local-development signing and may require renewed Keychain permission after rebuilding. An existing private `.wisp-signing/` identity is also reused when present. Packaging never creates certificate trust entries or changes OAuth item ACLs. The small C++ signing helper passes the build-keystore password over stdin and keeps it out of process arguments. It is not part of the app.
 
 For the opt-in signing regression, set `WISP_TEST_SIGNING=1` and run `npx vitest run tools/tests/signing.test.ts`. It requires the existing local identity and uses only a disposable keychain with dummy values and dialogs disabled.

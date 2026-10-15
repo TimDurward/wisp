@@ -13,11 +13,13 @@ if (process.argv.length > 2) throw new Error('Usage: npm run package:windows');
 
 const qmake = process.env.QMAKE || 'qmake6';
 const qtBin = run(qmake, ['-query', 'QT_INSTALL_BINS']).trim();
+const cargoAbout = process.env.CARGO_ABOUT || 'cargo-about';
+run(cargoAbout, ['--version'], { stdio: 'inherit' });
 run(process.env.CARGO || 'cargo', ['build', '--release', '--locked'], { stdio: 'inherit' });
 const version = projectVersion();
 const licenseReport = path.join(root, 'target/wisp-windows-dependency-licenses.html');
 run(
-  'cargo-about',
+  cargoAbout,
   [
     'generate',
     '--locked',

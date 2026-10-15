@@ -13,11 +13,13 @@ if (args.some((value) => !['--reuse-runtime', '--ad-hoc'].includes(value)))
   throw new Error('Usage: npm run package:mac -- [--reuse-runtime] [--ad-hoc]');
 const qmake = process.env.QMAKE || 'qmake6';
 const libraries = run(qmake, ['-query', 'QT_INSTALL_LIBS']).trim();
+const cargoAbout = process.env.CARGO_ABOUT || 'cargo-about';
+run(cargoAbout, ['--version'], { stdio: 'inherit' });
 run(process.env.CARGO || 'cargo', ['build', '--release', '--locked'], { stdio: 'inherit' });
 const version = projectVersion();
 const licenseReport = path.join(root, 'target/wisp-dependency-licenses.html');
 run(
-  'cargo-about',
+  cargoAbout,
   [
     'generate',
     '--locked',
