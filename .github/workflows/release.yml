@@ -10,7 +10,7 @@ concurrency:
 jobs:
   build:
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - os: macos-15
@@ -66,7 +66,8 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           $toolsRoot = Join-Path $env:RUNNER_TEMP 'wisp-release-tools'
-          cargo install cargo-about --version 0.9.2 --locked --root $toolsRoot
+          # The crate's executable requires its cli feature.
+          cargo install cargo-about --version 0.9.2 --locked --features cli --root $toolsRoot
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $cargoAbout = Join-Path $toolsRoot 'bin/cargo-about.exe'
           & $cargoAbout --version

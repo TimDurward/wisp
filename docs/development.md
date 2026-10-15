@@ -139,7 +139,7 @@ cargo run --locked -- --smoke "--data-dir=$env:TEMP/wisp-windows-check" "--scree
 
 The shared Qt shell supplies Windows paths, browser launching, clipboard, native text input, and Ctrl-based shortcuts. Speech recognition uses the CPU backend; Metal remains a macOS optimization. The Windows release build uses the GUI subsystem to avoid a separate console window. The existing macOS bundle, signing, and archive scripts are separate deployment adapters.
 
-To create a Windows app folder and a distributable ZIP, install `cargo-about` (`cargo install cargo-about --version 0.9.2 --locked`), then run:
+To create a Windows app folder and a distributable ZIP, install `cargo-about` (`cargo install cargo-about --version 0.9.2 --locked --features cli`), then run:
 
 ```powershell
 . ./tools/windows/env.ps1
