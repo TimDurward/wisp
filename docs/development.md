@@ -63,6 +63,8 @@ Qt StyleKit is a technology preview in Qt 6.11. Validate upgrades. Automated acc
 
 ## Install
 
+### macOS
+
 Requires macOS 14 or later.
 
 1. Download a ZIP from [GitHub Releases](https://github.com/TimDurward/wisp/releases). Choose `arm64` for Apple Silicon (M-series) or `x64` for Intel; Apple menu → **About This Mac** shows which you have.
@@ -71,6 +73,17 @@ Requires macOS 14 or later.
 4. If macOS says the developer cannot be verified or Apple cannot check the app, and you trust the download, open **System Settings → Privacy & Security → Open Anyway** for Wisp, then confirm **Open**.
 
 These builds aren't Apple-notarized. Approval may be requested again after updates. [Apple's first-launch instructions](https://support.apple.com/en-us/102445) explain this app-specific exception.
+
+### Windows installation
+
+1. Download the `windows-x64` ZIP from [GitHub Releases](https://github.com/TimDurward/wisp/releases/latest).
+2. Extract it to a permanent folder. Keep the entire `Wisp-windows-x64` folder together.
+3. Install the [Microsoft Visual C++ v14 x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe) if needed.
+4. Open **Wisp.exe**. You can create a shortcut to this executable.
+
+Windows builds are experimental and unsigned. Rust, Node.js, and the Qt SDK are not needed to run the app. Settings and saved translations remain in your Windows user profile when replacing the app folder for an update; close Wisp before replacing it.
+
+See [Using Wisp](usage.md) for connecting your accounts, translating chats, and enabling voice notes.
 
 ## Build
 
@@ -141,7 +154,7 @@ Windows support is experimental. Local validation covers Rust credential/persist
 
 ## Releases
 
-Update the version in `Cargo.toml`, regenerate `Cargo.lock` with Cargo, commit both, and push a matching tag such as `v0.1.0`. `.github/workflows/release.yml` tests and builds on separate macOS Apple Silicon, macOS Intel, and Windows x64 runners, bundles Qt, and creates all three ZIP downloads with SHA-256 checksums in a **draft GitHub release**. Every platform must succeed before the draft is created. Review the draft and publish it from GitHub. No local Keychain, profile, signing identity, or ChatGPT credential is used by the workflow.
+Update the version in `Cargo.toml`, regenerate `Cargo.lock` with Cargo, commit both, and push a matching tag such as `v0.0.1`. `.github/workflows/release.yml` tests and builds on separate macOS Apple Silicon, macOS Intel, and Windows x64 runners, bundles Qt, and publishes all three ZIP downloads with SHA-256 checksums. Every platform must succeed before a release is created. Assets upload to a draft first; the workflow publishes it as the latest normal release only after every upload succeeds. No local Keychain, profile, signing identity, or ChatGPT credential is used by the workflow.
 
 For a local archive, run `npm run release:mac` or `npm.cmd run release:windows` after packaging. GitHub tags must match Cargo's version. Mac release builds are currently ad hoc signed, not Apple notarized; Developer ID signing/notarization needs a separate Apple distribution setup. Windows builds are unsigned. The private local signing identity used for development must never be uploaded as a release secret.
 

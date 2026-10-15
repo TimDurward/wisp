@@ -184,7 +184,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         Text {
-            text: "Wisp 0.1.0"
+            text: Qt.application.version ? "Wisp " + Qt.application.version : "Wisp"
             color: Tokens.muted
             font.pixelSize: 11
             Layout.fillWidth: true
