@@ -2,6 +2,7 @@
 #include "wisp/Editor.h"
 #include "wisp/FocusShortcutFilter.h"
 #include "wisp/WebOrigin.h"
+#include <QAccessible>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -94,6 +95,13 @@ private Q_SLOTS:
         QVERIFY(!shell->property("footer").value<QObject*>());
         auto* browser = shell->findChild<QQuickItem*>("whatsappView");
         QVERIFY(browser);
+        auto* accessibleBrowser = QAccessible::queryAccessibleInterface(browser);
+        auto* accessiblePane = QAccessible::queryAccessibleInterface(browser->parentItem());
+        QVERIFY(accessibleBrowser && accessiblePane);
+        QCOMPARE(accessibleBrowser->parent(), accessiblePane);
+        const int browserIndex = accessiblePane->indexOfChild(accessibleBrowser);
+        QVERIFY(browserIndex >= 0);
+        QCOMPARE(accessiblePane->child(browserIndex), accessibleBrowser);
         QCOMPARE(browser->property("url").toUrl(), QUrl("about:blank"));
         auto* translation = shell->findChild<QQuickItem*>("chatTranslationButton");
         auto* settings = shell->findChild<QQuickItem*>("settingsButton");

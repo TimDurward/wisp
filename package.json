@@ -8,13 +8,15 @@
     "test:browser": "npm run build:web && playwright test",
     "test:native": "npm run build:web -- --tests && node tools/test-native.mjs",
     "package:mac": "node tools/macos/package.ts",
+    "package:windows": "node tools/windows/package.ts",
     "format": "prettier --write web tools *.ts *.json README.md docs/*.md",
     "format:check": "prettier --check web tools *.ts *.json README.md docs/*.md",
     "check": "npm run check:web && npm run check:tools && npm run check:tests && npm run format:check",
     "check:tools": "tsc -p tools/tsconfig.json",
     "test:signing": "WISP_TEST_SIGNING=1 vitest run tools/tests/signing.test.ts",
     "check:tests": "tsc -p web/tsconfig.tests.json",
-    "release:mac": "node tools/macos/archive.ts"
+    "release:mac": "node tools/macos/archive.ts",
+    "release:windows": "node tools/windows/archive.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",

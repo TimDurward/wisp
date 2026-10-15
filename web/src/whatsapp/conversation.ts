@@ -3,7 +3,7 @@ import { selectors } from './selectors';
 import { records, messages, conversationFromMessageId, messageId } from './messages';
 import { utf8Limit } from './text';
 import { composer } from './composer';
-export function active(): Chat {
+export function active(candidates?: readonly HTMLElement[]): Chat {
   const main = document.querySelector<HTMLElement>(selectors.main);
   if (!main)
     return {
@@ -25,9 +25,7 @@ export function active(): Chat {
   // Empty chats receive a view-bound native identity until their first message.
   const messageIds = [
     ...new Set(
-      records(main)
-        .map((node) => node.getAttribute('data-id')!)
-        .filter(Boolean),
+      (candidates || records(main)).map((node) => node.getAttribute('data-id')!).filter(Boolean),
     ),
   ];
   const ids = [...new Set(messageIds.map(conversationFromMessageId).filter(Boolean))];

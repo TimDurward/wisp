@@ -16,6 +16,49 @@ test('adapter preserves emojis and breaks while keeping translated UI out of con
   }
 });
 
+test('reading source text skips hidden and translated subtrees without changing the DOM', () => {
+  const { dom, w } = setup();
+  try {
+    const source = element(w.document, '.selectable-text');
+    source.innerHTML =
+      'Hola<img alt="😊" aria-hidden="true"><span aria-hidden="true">Hidden</span><span data-wisp="reading">Translated<img alt="No"></span><br>Uno<p>Dos</p><div>Tres</div>';
+    const original = source.innerHTML;
+    expect(w.testAdapter.textOf(source)).toBe('Hola😊\nUno\nDos\nTres');
+    expect(source.innerHTML).toBe(original);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('targeted history reads preserve eight preceding text messages across media rows', () => {
+  const { dom, w } = setup();
+  try {
+    const main = element(w.document, '#main');
+    main.querySelector('[data-id]')!.remove();
+    const ids: string[] = [];
+    for (let index = 0; index < 30; index++) {
+      const id = `false_123@lid_ROW${index}`;
+      if (index % 3) ids.push(id);
+      main.insertAdjacentHTML(
+        'beforeend',
+        `<div data-id="${id}"><div class="message-in">${index % 3 ? `<span class="selectable-text">Message ${index}</span>` : '<button>Voice note</button>'}</div></div>`,
+      );
+    }
+    const target = 'false_123@lid_ROW25';
+    const items = w.testAdapter.messages(main, new Set([target]), 8);
+    const position = ids.indexOf(target);
+    expect(items.map((item) => item.id)).toEqual(ids.slice(position - 8, position + 1));
+    expect(w.testAdapter.context(items, target)).toHaveLength(8);
+    expect(w.testAdapter.messages(main, new Set([target])).map((item) => item.id)).toEqual([
+      target,
+    ]);
+    element(main, `[data-id="${target}"] .selectable-text`).textContent = 'Edited';
+    expect(w.testAdapter.messages(main, new Set([target]))[0]?.text).toBe('Edited');
+  } finally {
+    dom.window.close();
+  }
+});
+
 test('media-only chats can be enabled without depending on text or header titles', () => {
   const { dom, w } = setup();
   try {

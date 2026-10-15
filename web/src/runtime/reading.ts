@@ -36,7 +36,7 @@ interface ReadingResult {
 interface ReadingServices {
   session: () => ReadingSession;
   submit: Submit;
-  isCurrentView: () => boolean;
+  currentRecords: () => readonly HTMLElement[] | null;
   schedule: () => void;
 }
 export function createReadingQueue(services: ReadingServices) {
@@ -119,9 +119,16 @@ export function createReadingQueue(services: ReadingServices) {
       return;
     hydrations.delete(value.request_id);
     window.clearTimeout(batch.timeout);
-    if (!enabled || batch.generation !== generation || !services.isCurrentView()) return;
+    if (!enabled || batch.generation !== generation) return;
+    const rows = services.currentRecords();
+    if (!rows) return;
     const saved = new Map(value.items.map((item) => [item.message_id, item.text]));
-    const messages = WhatsApp.messages(active.main);
+    const messages = WhatsApp.messages(
+      active.main,
+      new Set(batch.items.map((item) => item.message.id)),
+      0,
+      rows,
+    );
     for (const item of batch.items) {
       const current = messages.find(
         (message) => message.id === item.message.id && message.text === item.text,
@@ -137,11 +144,11 @@ export function createReadingQueue(services: ReadingServices) {
         renderResult(current, result);
       } else if (config?.can_translate) queue.push(item);
     }
-    pump();
+    pump(true);
     services.schedule();
   }
 
-  function pump() {
+  function pump(viewChecked = false) {
     const { active, enabled, config, preferences } = services.session();
     while (enabled && config?.can_translate && pending.size < 1 && queue.length) {
       const item = queue.shift()!;
@@ -154,7 +161,7 @@ export function createReadingQueue(services: ReadingServices) {
         processed.delete(item.message.id);
         continue;
       }
-      if (!services.isCurrentView()) {
+      if (!viewChecked && !services.currentRecords()) {
         processed.delete(item.message.id);
         return;
       }
@@ -186,11 +193,12 @@ export function createReadingQueue(services: ReadingServices) {
     if (!item) return;
     pending.delete(id);
     window.clearTimeout(item.timeout);
+    const rows = services.currentRecords();
     if (
       !enabled ||
       item.generation !== generation ||
       item.conversation !== active.conversation ||
-      !services.isCurrentView() ||
+      !rows ||
       (!preferences.include_sent && item.direction === 'outgoing')
     ) {
       processed.delete(item.message.id);
@@ -200,20 +208,30 @@ export function createReadingQueue(services: ReadingServices) {
     }
     const result = { source: item.text, text, error };
     rememberResult(item.message.id, result);
-    const current = WhatsApp.messages(active.main).find((m) => m.id === item.message.id);
+    const current = WhatsApp.messages(active.main, new Set([item.message.id]), 0, rows)[0];
     if (current && current.text === item.text) renderResult(current, result);
-    pump();
+    pump(true);
   }
 
-  function scan() {
+  function scan(candidates?: readonly HTMLElement[]) {
     const { active, enabled, preferences } = services.session();
     if (!enabled || !active.conversation) return;
     const probes: QueuedReading[] = [];
     let probeBytes = 0;
-    const items = WhatsApp.messages(active.main);
+    const rows = candidates || WhatsApp.records(active.main);
+    const visibleIds = new Set(
+      rows
+        .filter((container) => WhatsApp.visible({ container }))
+        .slice(-64)
+        .map((container) => container.getAttribute('data-id')!),
+    );
+    const items = WhatsApp.messages(active.main, visibleIds, 8, rows);
     for (const message of items
       .filter(
-        (m) => (preferences.include_sent || m.direction === 'incoming') && WhatsApp.visible(m),
+        (m) =>
+          visibleIds.has(m.id) &&
+          (preferences.include_sent || m.direction === 'incoming') &&
+          WhatsApp.visible(m),
       )
       .slice(-64)) {
       if (onlyLinks(message.text)) {

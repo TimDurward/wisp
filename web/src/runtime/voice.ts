@@ -259,15 +259,22 @@ export function createVoices(services: {
         );
     }
   }
-  function scan() {
+  function scan(candidates?: readonly HTMLElement[]) {
     const session = services.session();
     if (!session.enabled || !session.active.conversation) {
       clear();
       return;
     }
-    const notes = WhatsApp.voiceNotes(session.active.main)
-      .filter((note) => session.preferences.include_sent || note.direction === 'incoming')
-      .slice(-64);
+    const found = WhatsApp.voiceNotes(session.active.main, candidates).filter(
+      (note) => session.preferences.include_sent || note.direction === 'incoming',
+    );
+    const visible = new Set(found.filter(WhatsApp.voiceVisible).map((note) => note.id));
+    const notes = [
+      ...found.filter((note) => visible.has(note.id) || items.get(note.id)?.pending),
+      ...found.filter(
+        (note) => !visible.has(note.id) && items.has(note.id) && !items.get(note.id)?.pending,
+      ),
+    ].slice(0, 64);
     const present = new Set(notes.map((note) => note.id));
     for (const [id, item] of items) {
       if (!present.has(id)) {
@@ -278,6 +285,9 @@ export function createVoices(services: {
     }
     for (const note of notes) {
       let item = items.get(note.id);
+      // Restore and build controls when a note enters the viewport. Retain
+      // existing rows while scrolling so their translation height stays stable.
+      if (!item && !visible.has(note.id)) continue;
       if (item && item.note.element !== note.element) {
         item.ui.remove();
         item.ui = makeUI(note, item);

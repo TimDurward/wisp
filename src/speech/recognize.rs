@@ -165,7 +165,9 @@ mod tests {
         }
         let bytes = std::fs::read(root.join("spanish.pcm")).unwrap();
         let samples: Vec<_> = bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|n| f32::from(i16::from_le_bytes([n[0], n[1]])) / 32768.0)
             .collect();
         let cancelled = Arc::new(AtomicBool::new(false));

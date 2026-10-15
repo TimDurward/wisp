@@ -70,7 +70,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
   const readings = createReadingQueue({
     submit,
     session: () => ({ active, enabled, config, preferences }),
-    isCurrentView: () => currentView(WhatsApp.active()),
+    currentRecords,
     schedule,
   });
   const draft = createDraft({
@@ -115,6 +115,11 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
     if (!current) schedule();
     return current;
   }
+  function currentRecords() {
+    const main = document.querySelector<HTMLElement>(WhatsApp.selectors.main);
+    const rows = WhatsApp.records(main);
+    return currentView(WhatsApp.active(rows)) ? rows : null;
+  }
   function reset() {
     enabled = false;
     config = null;
@@ -124,7 +129,10 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
   }
   function scan() {
     timer = undefined;
-    const next = WhatsApp.active();
+    // Reuse this synchronous DOM snapshot through the scan. Never cache rows
+    // across events: WhatsApp can replace a chat or recycle its message nodes.
+    const rows = WhatsApp.records(document.querySelector<HTMLElement>(WhatsApp.selectors.main));
+    const next = WhatsApp.active(rows);
     refreshAppearance();
     FocusLayout.refresh();
     const idsChanged = next.messageIds.join('|') !== active.messageIds.join('|');
@@ -163,8 +171,8 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
     }
     if (!enabled || !active.conversation) return;
     if (config?.can_translate) draft.bind(active.main, config);
-    readings.scan();
-    voices.scan();
+    readings.scan(rows);
+    voices.scan(rows);
   }
   function schedule() {
     if (!timer) timer = window.setTimeout(scan, 160);

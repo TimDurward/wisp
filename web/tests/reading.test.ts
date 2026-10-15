@@ -2,6 +2,31 @@ import { element, required } from './support/fixtures';
 import { test, expect } from 'vitest';
 import { setup } from './support/harness';
 
+test('scrolling only requests visible messages while retaining nearby context', async () => {
+  const app = setup();
+  try {
+    const main = element(app.w.document, '#main');
+    main.querySelector('[data-id]')!.remove();
+    for (let index = 0; index < 80; index++)
+      main.insertAdjacentHTML(
+        'beforeend',
+        `<div data-id="false_123@lid_ROW${index}"><div class="message-in"><span class="selectable-text">Mensaje ${index}</span></div></div>`,
+      );
+    app.w.testAdapter.visible = ({ container }) => container.dataset.id === 'false_123@lid_ROW50';
+    app.start();
+    app.emit({ type: 'config', conversation: '123@lid', revision: 1, enabled: true });
+    await app.flush();
+    const requests = app.requests('translate');
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.message_id).toBe('false_123@lid_ROW50');
+    expect(requests[0]?.context.map((item) => item.text)).toEqual(
+      Array.from({ length: 8 }, (_, index) => `Mensaje ${42 + index}`),
+    );
+  } finally {
+    app.dom.window.close();
+  }
+});
+
 test('link-only messages keep native previews without requesting a translation', async () => {
   const app = setup();
   try {

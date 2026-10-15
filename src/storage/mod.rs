@@ -1,4 +1,4 @@
-mod persistence;
+pub(crate) mod persistence;
 use crate::preferences::{
     ConversationPreferences, CustomLanguage, Language, TranslationPreferences, ViewPreferences,
     normalize_rules,

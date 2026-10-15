@@ -2,25 +2,29 @@ import type { Message } from '../contracts';
 import { selectors } from './selectors';
 const directions = new WeakMap<HTMLElement, { id: string; direction: Message['direction'] }>();
 import { textOf, utf8Limit, byteLength } from './text';
+const addressId = /^(?:true|false)_([^_\s]+@(?:c\.us|s\.whatsapp\.net|g\.us|lid))_/;
+const opaqueId = /^[a-f0-9]{16,128}$/i;
 export function conversationFromMessageId(id: string | null) {
-  const match = /^(?:true|false)_([^_\s]+@(?:c\.us|s\.whatsapp\.net|g\.us|lid))_/.exec(id || '');
+  const match = addressId.exec(id || '');
   return match?.[1] ?? null;
 }
 
 export function messageId(id: string | null) {
-  return (
-    !!id &&
-    id.length <= 256 &&
-    (conversationFromMessageId(id) !== null || /^[a-f0-9]{16,128}$/i.test(id))
-  );
+  return !!id && id.length <= 256 && (addressId.test(id) || opaqueId.test(id));
 }
 
 export function records(main: HTMLElement | null) {
-  return main
-    ? [...main.querySelectorAll<HTMLElement>(selectors.message)].filter(
-        (node) => messageId(node.getAttribute('data-id')) && !node.closest(selectors.quote),
-      )
-    : [];
+  if (!main || main.closest(selectors.quote)) return [];
+  // Quote subtrees are usually sparse. Collect their records once instead of
+  // walking every message's ancestors for every identity/translation check.
+  const quoted = new Set<Element>();
+  for (const quote of main.querySelectorAll(selectors.quote)) {
+    if (quote.matches(selectors.message)) quoted.add(quote);
+    for (const node of quote.querySelectorAll(selectors.message)) quoted.add(node);
+  }
+  return [...main.querySelectorAll<HTMLElement>(selectors.message)].filter(
+    (node) => !quoted.has(node) && messageId(node.getAttribute('data-id')),
+  );
 }
 
 export function messageDirection(container: HTMLElement, element: HTMLElement, main: HTMLElement) {
@@ -63,34 +67,72 @@ export function messageDirection(container: HTMLElement, element: HTMLElement, m
 
 export function messages(
   main: HTMLElement | null = document.querySelector<HTMLElement>(selectors.main),
+  onlyIds?: ReadonlySet<string>,
+  preceding = 0,
+  candidates?: readonly HTMLElement[],
 ): Message[] {
   if (!main) return [];
+  const rows = candidates || records(main);
+  const decoded = new Map<HTMLElement, Message | null>();
+  function read(container: HTMLElement): Message | null {
+    if (decoded.has(container)) return decoded.get(container)!;
+    const value = readMessage(container, main!);
+    decoded.set(container, value);
+    return value;
+  }
+  const selected = new Set<HTMLElement>();
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]!;
+    if (onlyIds && !onlyIds.has(row.getAttribute('data-id')!)) continue;
+    selected.add(row);
+    // Preserve the preceding *text* messages, including across media-only rows.
+    if (onlyIds && preceding > 0) {
+      let remaining = preceding;
+      const contextIds = new Set([row.getAttribute('data-id')!]);
+      for (let before = index - 1; before >= 0 && remaining > 0; before--) {
+        const previous = rows[before]!;
+        const message = read(previous);
+        if (message && !contextIds.has(message.id)) {
+          contextIds.add(message.id);
+          selected.add(previous);
+          remaining--;
+        }
+      }
+    }
+  }
   const result = [];
   const seen = new Set();
-  for (const container of records(main)) {
-    const id = container.getAttribute('data-id');
-    if (!id) continue;
-    if (seen.has(id)) continue;
-    const bubble = container.matches(`${selectors.incoming}, ${selectors.outgoing}`)
-      ? container
-      : container.querySelector<HTMLElement>(`${selectors.incoming}, ${selectors.outgoing}`);
-    const scope = bubble || container;
-    const textNodes = [
-      ...(scope.matches(selectors.text) ? [scope] : []),
-      ...scope.querySelectorAll<HTMLElement>(selectors.text),
-    ].filter((node) => !node.closest(selectors.quote));
-    const roots = textNodes.filter(
-      (node) => !textNodes.some((other) => other !== node && other.contains(node)),
-    );
-    const text = roots.map(textOf).join('\n').trim();
-    if (!text || byteLength(text) > 8000) continue;
-    const element = bubble || roots[0]?.closest('[data-pre-plain-text]') || roots[0]?.parentElement;
-    const direction = element ? messageDirection(container, element, main) : null;
-    if (!direction || !element) continue;
-    seen.add(id);
-    result.push({ id, text, direction, element, container, sourceElements: roots });
+  for (const container of rows) {
+    if (!selected.has(container)) continue;
+    const message = read(container);
+    if (message && !seen.has(message.id)) {
+      seen.add(message.id);
+      result.push(message);
+    }
   }
   return result;
+}
+
+function readMessage(container: HTMLElement, main: HTMLElement): Message | null {
+  const id = container.getAttribute('data-id');
+  if (!id) return null;
+  const bubble = container.matches(`${selectors.incoming}, ${selectors.outgoing}`)
+    ? container
+    : container.querySelector<HTMLElement>(`${selectors.incoming}, ${selectors.outgoing}`);
+  const scope = bubble || container;
+  const textNodes = [
+    ...(scope.matches(selectors.text) ? [scope] : []),
+    ...scope.querySelectorAll<HTMLElement>(selectors.text),
+  ].filter((node) => !node.closest(selectors.quote));
+  const roots = textNodes.filter(
+    (node) => !textNodes.some((other) => other !== node && other.contains(node)),
+  );
+  const text = roots.map(textOf).join('\n').trim();
+  if (!text || byteLength(text) > 8000) return null;
+  const element = bubble || roots[0]?.closest('[data-pre-plain-text]') || roots[0]?.parentElement;
+  const direction = element ? messageDirection(container, element, main) : null;
+  if (!direction || !element) return null;
+  return { id, text, direction, element, container, sourceElements: roots };
 }
 
 export function context(items: Pick<Message, 'id' | 'direction' | 'text'>[], beforeId?: string) {
@@ -101,9 +143,19 @@ export function context(items: Pick<Message, 'id' | 'direction' | 'text'>[], bef
     .map((m) => ({ direction: m.direction, text: utf8Limit(m.text, 2000) }));
 }
 
-export function visible(message: Message) {
+export function visible(message: Pick<Message, 'container'> & Partial<Pick<Message, 'element'>>) {
   const container = message.container.getBoundingClientRect();
-  const rect = container.height > 0 ? container : message.element.getBoundingClientRect();
+  let rect = container;
+  if (container.height <= 0) {
+    const element =
+      message.element ||
+      message.container.querySelector<HTMLElement>(
+        `${selectors.incoming}, ${selectors.outgoing}, [data-pre-plain-text]`,
+      ) ||
+      message.container.querySelector<HTMLElement>(selectors.text)?.parentElement ||
+      message.container;
+    rect = element.getBoundingClientRect();
+  }
   const scroll = message.container.closest(
     '[role="application"], [data-testid="conversation-panel-messages"]',
   );

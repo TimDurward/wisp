@@ -137,14 +137,14 @@ pub struct Engine {
 impl Engine {
     pub fn new(root: PathBuf, emit: Emit) -> Result<Arc<Self>> {
         let speech = crate::speech::SpeechModel::new(&root);
-        let storage = Storage::open(root)?;
+        let storage = Storage::open(root.clone())?;
         let account = storage
             .settings
             .accounts
             .iter()
             .find(|a| Some(&a.client_id) == storage.settings.active_account.as_ref())
             .cloned();
-        let mut auth = Auth::new(account, storage.settings.host_id.clone())?;
+        let mut auth = Auth::new(account, storage.settings.host_id.clone(), &root)?;
         if auth.restore().is_err() {
             emit(
                 EventTarget::Desktop,

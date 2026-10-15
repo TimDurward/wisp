@@ -3,7 +3,7 @@ export const voicePlaySelector =
   '[data-icon="audio-play"], [data-icon="audio-pause"], [data-icon="ptt-play"], [data-icon="ptt-pause"], [data-testid="audio-play"], [data-testid="ptt-play"], [data-testid="voice-message-play"], [aria-label="Play voice message"], [aria-label="Pause voice message"]';
 export const voiceContainerSelector =
   '[data-testid="audio-player"], [data-testid="audio-message"], [data-testid="voice-message"], [data-testid="ptt"], [data-testid="ptt-container"]';
-const voiceMarkerSelector =
+export const voiceMarkerSelector =
   voiceContainerSelector +
   ', [data-icon="ptt-incoming"], [data-icon="ptt-outgoing"], [data-icon="ptt-status"]';
 const genericPlaySelector = '[data-icon="play"], [data-icon="pause"]';

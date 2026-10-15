@@ -13,13 +13,22 @@ ColumnLayout {
     SettingsCard {
         Layout.fillWidth: true
         heading: root.settings.session.accountLabel
-        description: root.settings.session.connected && root.accounts.length > 1 ? "" : root.settings.session.accountEmail || (!root.settings.session.credentialsAvailable ? "Sign-in is available on macOS." : "Uses your ChatGPT plan for new translations.")
+        description: root.settings.session.connected && root.accounts.length > 1 ? "" : root.settings.session.accountEmail || (!root.settings.session.credentialsAvailable ? "Secure sign-in is not available on this platform yet." : "Uses your ChatGPT plan for new translations.")
         objectName: "accountConnectionCard"
         SK.Button {
+            objectName: "accountConnectButton"
             visible: !root.settings.session.connected || !root.settings.session.eligible || (!root.settings.session.ready && !root.settings.session.modelBusy)
-            text: root.settings.session.accountBusy ? "Connecting…" : "Continue with ChatGPT"
+            text: root.settings.session.accountBusy ? "Connecting…" : root.settings.session.connected && root.settings.session.eligible ? "Refresh models" : "Continue with ChatGPT"
             enabled: root.settings.session.credentialsAvailable && !root.settings.session.accountBusy
-            onClicked: root.settings.session.command("sign_in")
+            onClicked: root.settings.session.connected && root.settings.session.eligible ? root.settings.session.continueSetup() : root.settings.session.command("sign_in")
+        }
+        Text {
+            visible: root.settings.session.needsSetup
+            text: root.settings.session.setupDetail
+            color: Tokens.muted
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
         }
         ChoiceBox {
             objectName: "accountChoice"
@@ -165,7 +174,7 @@ ColumnLayout {
         }
     }
     Text {
-        text: "Enabled chats share text with ChatGPT. Sign-in stays in the OS keychain."
+        text: "Enabled chats share text with ChatGPT. Sign-in is protected by your operating system."
         color: Tokens.muted
         font.pixelSize: 12
         wrapMode: Text.WordWrap

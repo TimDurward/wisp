@@ -122,6 +122,14 @@ SK.ApplicationWindow {
         onSettingsRequested: settings.open()
         onTranslationRequested: dialog.openForCurrent()
     }
+    ConnectionGuide {
+        id: setupGuide
+        objectName: "setupBanner"
+        width: parent.width
+        session: session
+        visible: session.needsSetup || !session.hasChat
+        onAccountRequested: settings.openPage(4)
+    }
     RulesDialog {
         id: dialog
         session: session
@@ -161,6 +169,7 @@ SK.ApplicationWindow {
         window.width = 960;
         window.height = 660;
         desktop.commands = 0;
+        desktop.authBusy = false;
         desktop.lastCommand = ({});
         desktop.state = Object.assign({}, desktop.state, {
             conversation_id: "chat-a",
@@ -168,6 +177,10 @@ SK.ApplicationWindow {
             rules: "",
             enabled: false,
             signed_in: false,
+            initialized: true,
+            credentials_available: true,
+            models_busy: false,
+            chat_cache_count: 0,
             translation_ready: false,
             eligible: false,
             accounts: [],
@@ -178,6 +191,22 @@ SK.ApplicationWindow {
             languages: desktop.state.languages.slice(0, 10)
         });
         settings.loadDraft();
+    }
+    function setupStage(stage) {
+        desktop.authBusy = stage === "auth";
+        desktop.state = Object.assign({}, desktop.state, {
+            initialized: stage !== "starting",
+            credentials_available: stage !== "unavailable",
+            signed_in: ["plan", "models", "retry", "ready"].includes(stage),
+            eligible: ["models", "retry", "ready"].includes(stage),
+            models_busy: stage === "models",
+            translation_ready: stage === "ready",
+            chat_cache_count: stage === "cached" ? 2 : 0,
+            enabled: false
+        });
+    }
+    function beginSetup() {
+        dialog.openForCurrent();
     }
     function beginCustomLanguage(target) {
         settings.openPage(0);
@@ -274,7 +303,9 @@ SK.ApplicationWindow {
             sameChat: dialog.sameChat,
             changed: dialog.changed,
             commands: desktop.commands,
-            lastCommand: desktop.lastCommand
+            lastCommand: desktop.lastCommand,
+            needsSetup: session.needsSetup,
+            canToggle: session.canToggle
         };
     }
     function setAppearance(dark) {

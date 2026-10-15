@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, ubuntu-latest, windows-latest]
+        os: [macos-15, ubuntu-latest, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -68,6 +68,14 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then qmake_path="$qmake_path.exe"; fi
           "$qmake_path" -query QT_VERSION
           echo "QMAKE=$qmake_path" >> "$GITHUB_ENV"
+      - name: Select Windows build environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          . ./tools/windows/env.ps1
+          foreach ($name in @('PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'LIBCLANG_PATH', 'VCToolsInstallDir', 'WindowsSdkDir', 'WindowsSDKVersion', 'VSCMD_ARG_TGT_ARCH', 'VSCMD_ARG_HOST_ARCH')) {
+            "$name=$([Environment]::GetEnvironmentVariable($name))" >> $env:GITHUB_ENV
+          }
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libnss3 libxss1 libasound2t64 libxcb-cursor0
       - run: npm ci

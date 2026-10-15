@@ -19,6 +19,66 @@ const speech = {
   label: 'Whisper',
   download_bytes: 487601967,
 };
+test('voice context preserves eight preceding text messages across media-only rows', () => {
+  const app = setup();
+  try {
+    const main = element(app.w.document, '#main');
+    main.querySelector('[data-id]')!.remove();
+    const markup = Array.from(
+      { length: 20 },
+      (_, index) =>
+        `<div data-id="false_123@lid_ROW${index}"><div class="message-in"><span class="selectable-text">Message ${index}</span></div></div><div data-id="false_123@lid_MEDIA${index}"><div class="message-in">Media</div></div>`,
+    ).join('');
+    element(main, 'footer').insertAdjacentHTML(
+      'beforebegin',
+      markup +
+        '<div data-id="false_123@lid_VOICE"><div class="message-in"><button aria-label="Play voice message"></button></div></div><div data-id="false_123@lid_AFTER"><div class="message-in"><span class="selectable-text">Later message</span></div></div>',
+    );
+    const note = required(app.w.testAdapter.voiceNotes(main)[0]);
+    expect(app.w.testAdapter.voiceContext(main, note).map((line) => line.text)).toEqual(
+      Array.from({ length: 8 }, (_, index) => `Message ${index + 12}`),
+    );
+  } finally {
+    app.dom.window.close();
+  }
+});
+test('saved voice controls restore on entering the viewport and retain their row while scrolling', async () => {
+  const app = fixture();
+  try {
+    app.w.testAdapter.voiceVisible = () => false;
+    configure(app, false);
+    await app.flush();
+    expect(app.requests('saved_voice')).toHaveLength(0);
+    expect(app.w.document.querySelector('.wisp-voice')).toBeNull();
+    app.w.testAdapter.voiceVisible = () => true;
+    app.w.document.dispatchEvent(new app.w.Event('scroll'));
+    await app.flush();
+    expect(app.requests('saved_voice')).toHaveLength(1);
+    const panel = element(app.w.document, '.wisp-voice');
+    app.w.testAdapter.voiceVisible = () => false;
+    app.w.document.dispatchEvent(new app.w.Event('scroll'));
+    await app.flush();
+    expect(app.w.document.querySelector('.wisp-voice')).toBe(panel);
+    expect(app.requests('voice_begin')).toHaveLength(0);
+    expect(app.requests('speech_download')).toHaveLength(0);
+  } finally {
+    app.dom.window.close();
+  }
+});
+test('audio markers inside controls with unrelated IDs still belong to the message record', () => {
+  const app = setup();
+  try {
+    element(app.w.document, 'footer').insertAdjacentHTML(
+      'beforebegin',
+      '<div data-id="false_123@lid_VOICE"><div class="message-in"><div data-id="player-control"><button aria-label="Play voice message"></button></div></div></div>',
+    );
+    expect(
+      app.w.testAdapter.voiceNotes(element(app.w.document, '#main')).map((note) => note.id),
+    ).toEqual(['false_123@lid_VOICE']);
+  } finally {
+    app.dom.window.close();
+  }
+});
 test('saved voice translations restore on return without audio setup, a click, or a new transcription', async () => {
   const savedVoices = new Map([
     [
@@ -387,7 +447,13 @@ test('automatic processing waits for cache hydration and skips notes outside the
     configure(app, true, true);
     await app.flush();
     expect(app.requests('voice_begin')).toHaveLength(0);
+    expect(app.requests('saved_voice')).toHaveLength(0);
+    visible = true;
+    app.w.document.dispatchEvent(new app.w.Event('scroll'));
+    await app.flush();
+    expect(app.requests('voice_begin')).toHaveLength(0);
     const hydration = required(app.requests('saved_voice')[0]);
+    visible = false;
     app.emit({
       ...hydration,
       type: 'voice_saved',
@@ -432,6 +498,44 @@ test('turning automatic translation off stops the remaining queue and failures d
     expect(required(app.requests('voice_begin').at(-1)).message_id).toBe('false_123@lid_SECOND');
     await app.advance(6000);
     expect(app.requests('voice_begin')).toHaveLength(2);
+  } finally {
+    app.dom.window.close();
+  }
+});
+
+test('scrolling preserves completed voice text and its selection until the translation changes', async () => {
+  const app = fixture({
+    savedVoices: new Map([
+      [
+        'false_123@lid_VOICE',
+        {
+          transcript: { text: 'Mañana', language: 'es', confidence: 0.9, review: false },
+          language: 'es',
+          translation: 'Tomorrow at https://example.com',
+        },
+      ],
+    ]),
+  });
+  try {
+    configure(app);
+    await app.flush();
+    const output = element(app.w.document, '.wisp-voice-output');
+    const text = output.firstChild;
+    const link = output.querySelector('a');
+    expect(link?.href).toBe('https://example.com/');
+    const selection = app.w.getSelection()!;
+    const range = app.w.document.createRange();
+    range.selectNodeContents(output);
+    selection.addRange(range);
+    for (let index = 0; index < 10; index++) {
+      app.w.document.dispatchEvent(new app.w.Event('scroll'));
+      await app.flush();
+    }
+    expect(output.firstChild).toBe(text);
+    expect(output.querySelector('a')).toBe(link);
+    expect(selection.toString()).toBe('Tomorrow at https://example.com');
+    element<HTMLButtonElement>(app.w.document, '.wisp-voice-collapse').click();
+    expect(output.hidden).toBe(true);
   } finally {
     app.dom.window.close();
   }

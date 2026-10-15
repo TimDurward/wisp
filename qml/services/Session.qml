@@ -45,6 +45,18 @@ QtObject {
     readonly property string settingsShortcut: Qt.platform.os === "osx" ? "⌘," : "Ctrl+,"
     readonly property string accountLabel: starting ? "Restoring your account…" : desktop.authBusy ? "Connecting to ChatGPT…" : connected && eligible ? "ChatGPT connected" : connected ? "ChatGPT plan access needed" : "Connect ChatGPT"
     readonly property string accountEmail: connected ? (state.accounts || []).find(account => account.client_id === state.account)?.email || "" : ""
+    readonly property bool needsSetup: !ready
+    readonly property string setupTitle: starting ? "Starting Wisp…" : desktop.authBusy ? "Finish connecting in your browser" : !credentialsAvailable ? "Secure sign-in unavailable" : !connected ? "Connect ChatGPT to translate" : !eligible ? "Check your ChatGPT plan" : modelBusy ? "Checking your translation models…" : "Choose a translation model"
+    readonly property string setupDetail: starting ? "Restoring your account and settings." : desktop.authBusy ? "Complete the ChatGPT sign-in in your browser, then return to Wisp." : !credentialsAvailable ? "This platform cannot securely store your ChatGPT sign-in yet." : !connected ? (hasChat ? "Connect your ChatGPT account to enable translation for this chat. Wisp uses your ChatGPT plan for new translations." : "Link WhatsApp here, then connect your ChatGPT account. Wisp uses your ChatGPT plan for new translations.") : !eligible ? "This account does not currently have access to translation models. Check your plan or connect another account in App settings." : modelBusy ? "You can turn on translation once an available model is ready." : "Refresh the available models or choose one in App settings to start translating."
+    readonly property string setupAction: accountBusy ? "" : !credentialsAvailable ? "" : !connected ? "Connect ChatGPT" : !eligible ? "Account settings" : modelBusy ? "" : "Refresh models"
+    function continueSetup() {
+        if (accountBusy || !credentialsAvailable || modelBusy)
+            return;
+        if (!connected)
+            command("sign_in");
+        else if (eligible && !ready)
+            command("refresh_models");
+    }
     readonly property string chatHint: {
         if (starting)
             return "Starting Wisp…";
@@ -57,15 +69,9 @@ QtObject {
         if (!hasChat)
             return "Open a conversation to start translating";
         if (enabled && !ready)
-            return "Saved translations available · Connect ChatGPT for new messages";
-        if (desktop.authBusy)
-            return "Finish signing in to ChatGPT in your browser";
-        if (!eligible)
-            return "Connect ChatGPT in App settings to translate this chat";
-        if (modelBusy)
-            return "Checking your available translation models…";
+            return "Saved translations are available. Complete setup for new translations.";
         if (!ready)
-            return "Choose an available model in App settings";
+            return setupDetail;
         return enabled ? "Translation is on · Earlier messages translate as you scroll" : "Turn on translation for this conversation";
     }
     function command(type, fields) {

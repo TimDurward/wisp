@@ -36,8 +36,11 @@ DesktopController::DesktopController(WispBridge* backend, QString root, bool dia
         if (type == QStringLiteral("appearance")) {
             Q_EMIT appearanceChanged(event[QStringLiteral("dark")].toBool());
         } else if (type == QStringLiteral("status")) {
-            state_ = event.toVariantMap();
-            Q_EMIT stateChanged();
+            const auto next = event.toVariantMap();
+            if (next != state_) {
+                state_ = next;
+                Q_EMIT stateChanged();
+            }
         } else if (type == QStringLiteral("speech_model")) {
             state_.insert(QStringLiteral("speech"), event[QStringLiteral("speech")].toVariant());
             Q_EMIT stateChanged();
@@ -125,7 +128,7 @@ void DesktopController::clearNotice() {
     Q_EMIT noticeChanged();
 }
 void DesktopController::saveLayoutDiagnostic(const QString& payload) {
-    if (payload.size() > 128000) {
+    if (!diagnostics_ || payload.size() > 128000) {
         return;
     }
     const auto data = QJsonDocument::fromJson(payload.toUtf8());

@@ -7,6 +7,18 @@ test('UTF-8 bounds preserve complete emoji and accents', () => {
   expect(adapter.utf8Limit('ééé', 5)).toBe('éé');
   expect(adapter.byteLength('😊é')).toBe(6);
 });
+
+test('UTF-8 truncation handles every boundary in mixed text and lone surrogates', () => {
+  const source = 'ASCII é 日本語 😊\ud800 end';
+  const encoder = new TextEncoder();
+  for (let limit = 0; limit <= encoder.encode(source).length + 1; limit++) {
+    const result = adapter.utf8Limit(source, limit);
+    expect(source.startsWith(result)).toBe(true);
+    expect(encoder.encode(result).length).toBeLessThanOrEqual(limit);
+    const next = [...source.slice(result.length)][0];
+    if (next) expect(encoder.encode(result + next).length).toBeGreaterThan(limit);
+  }
+});
 test('chat identity follows WhatsApp message IDs, including groups and LIDs', () => {
   expect(adapter.conversationFromMessageId('false_51999999999@c.us_ABC')).toBe('51999999999@c.us');
   expect(adapter.conversationFromMessageId('true_12345@lid_ABC')).toBe('12345@lid');

@@ -23,6 +23,8 @@ SK.ApplicationWindow {
     property string lastLayoutView: ""
     property int layoutCapturesRemaining: 0
     function captureLayout() {
+        if (!window.desktop.diagnostics)
+            return;
         layoutCapturesRemaining = 4;
         layoutCapture.restart();
     }
@@ -137,6 +139,16 @@ SK.ApplicationWindow {
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
+        // WebEngine checks only its immediate parent for accessibility. Keep
+        // that parent in the tree so Windows sibling navigation cannot loop.
+        Accessible.role: Accessible.Pane
+        Accessible.name: "WhatsApp"
+        ConnectionGuide {
+            session: appSession
+            visible: appSession.needsSetup || !appSession.hasChat
+            Layout.fillWidth: true
+            onAccountRequested: settings.openPage(4)
+        }
         Rectangle {
             visible: !!window.desktop.notice || !!browser.loadError || ["unsupported_messages", "ambiguous"].includes(appSession.state.chat_detection)
             Layout.fillWidth: true
@@ -156,7 +168,9 @@ SK.ApplicationWindow {
                     font.pixelSize: 12
                 }
                 SK.ToolButton {
-                    visible: !window.desktop.notice && !browser.loadError
+                    objectName: "reloadWhatsAppButton"
+                    visible: !window.desktop.notice
+                    enabled: !browser.loading
                     text: "Reload WhatsApp"
                     onClicked: browser.reload()
                 }
@@ -218,7 +232,7 @@ SK.ApplicationWindow {
                 Layout.fillWidth: true
             }
             Text {
-                text: "Your plan’s model access and usage limits apply."
+                text: "Open a WhatsApp chat, then choose Chat translation in the toolbar and turn on Translate this chat. Your ChatGPT plan’s model access and usage limits apply."
                 color: Tokens.muted
                 font.pixelSize: 13
                 wrapMode: Text.WordWrap

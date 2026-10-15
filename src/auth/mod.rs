@@ -3,7 +3,7 @@ mod callback;
 mod tests;
 mod verification;
 
-use crate::platform::credentials::{delete_credentials, load_credentials, save_credentials};
+use crate::platform::credentials::CredentialStore;
 use crate::storage::{Account, now};
 use anyhow::{Context, Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -15,7 +15,7 @@ use ring::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, path::Path, time::Duration};
 use subtle::ConstantTimeEq;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -84,22 +84,24 @@ pub struct Auth {
     credentials: Option<Credentials>,
     host: String,
     client: reqwest::Client,
+    store: CredentialStore,
 }
 
 impl Auth {
-    pub fn new(account: Option<Account>, host: String) -> Result<Self> {
+    pub fn new(account: Option<Account>, host: String, root: &Path) -> Result<Self> {
         Ok(Self {
             account,
             credentials: None,
             host,
             client: http_client()?,
+            store: CredentialStore::new(root),
         })
     }
     pub fn restore(&mut self) -> Result<()> {
         self.credentials = self
             .account
             .as_ref()
-            .map(|account| load_credentials(account, &self.host))
+            .map(|account| self.store.load(account, &self.host))
             .transpose()?
             .flatten();
         Ok(())
@@ -225,7 +227,7 @@ impl Auth {
                 .collect(),
             expires_at: now() + tokens.expires_in,
         };
-        save_credentials(&account, &self.host, &credentials)?;
+        self.store.save(&account, &self.host, &credentials)?;
         self.account = Some(account.clone());
         self.credentials = Some(credentials);
         Ok(account)
@@ -283,7 +285,7 @@ impl Auth {
                 .unwrap_or_else(|| current.scopes.clone()),
             expires_at: now() + tokens.expires_in,
         };
-        let saved = save_credentials(&account, &self.host, &credentials);
+        let saved = self.store.save(&account, &self.host, &credentials);
         let eligible = credentials.eligible();
         let result = credentials.access_token.clone();
         self.credentials = Some(credentials);
@@ -296,7 +298,7 @@ impl Auth {
     }
 
     pub fn switch(&mut self, account: Account) -> Result<()> {
-        let credentials = load_credentials(&account, &self.host)?;
+        let credentials = self.store.load(&account, &self.host)?;
         self.account = Some(account);
         self.credentials = credentials;
         Ok(())
@@ -344,7 +346,7 @@ impl Auth {
                 };
                 revoked = attempt.await.is_ok();
             }
-            delete_credentials(account, &self.host)?;
+            self.store.delete(account, &self.host)?;
         }
         self.credentials = None;
         Ok(revoked)

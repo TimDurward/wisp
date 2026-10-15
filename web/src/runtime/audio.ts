@@ -29,20 +29,17 @@ export async function decodeVoice(
     offset += chunk.byteLength;
   }
   signal.throwIfAborted();
-  const decoder = new AudioContext({ sampleRate: 16000 });
-  try {
-    const audio = await decoder.decodeAudioData(bytes.buffer);
-    signal.throwIfAborted();
-    if (!audio.length || audio.duration > Math.min(30, maxMinutes) * 60)
-      throw new Error(
-        `This voice note exceeds your ${maxMinutes}-minute limit. Change it in Languages settings.`,
-      );
-    if (audio.sampleRate !== 16000)
-      throw new Error('This browser could not prepare the recording for transcription.');
-    return audio;
-  } finally {
-    await decoder.close();
-  }
+  // Decoding and resampling need no live audio device or playback stream.
+  const decoder = new OfflineAudioContext(1, 1, 16000);
+  const audio = await decoder.decodeAudioData(bytes.buffer);
+  signal.throwIfAborted();
+  if (!audio.length || audio.duration > Math.min(30, maxMinutes) * 60)
+    throw new Error(
+      `This voice note exceeds your ${maxMinutes}-minute limit. Change it in Languages settings.`,
+    );
+  if (audio.sampleRate !== 16000)
+    throw new Error('This browser could not prepare the recording for transcription.');
+  return audio;
 }
 export function pcmChunk(audio: AudioBuffer, start: number, count: number): string {
   const bytes = new Uint8Array(count * 2),

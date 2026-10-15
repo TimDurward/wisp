@@ -114,7 +114,7 @@ SK.Popup {
                     }
                 }
                 Text {
-                    visible: !root.rulesExpanded && (!root.sameChat || !root.session.ready)
+                    visible: !root.rulesExpanded && (!root.sameChat || (root.session.enabled && !root.session.ready))
                     text: !root.sameChat ? "Chat changed. Reopen Translation to continue." : root.session.chatHint
                     textFormat: Text.PlainText
                     color: root.sameChat ? Tokens.muted : Tokens.warning
@@ -122,10 +122,12 @@ SK.Popup {
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
-                SK.ToolButton {
+                ConnectionGuide {
                     visible: !root.rulesExpanded && root.sameChat && !root.session.ready
-                    text: root.session.connected ? "Account and model" : "Connect ChatGPT"
-                    onClicked: {
+                    session: root.session
+                    compact: true
+                    Layout.fillWidth: true
+                    onAccountRequested: {
                         root.close();
                         root.accountRequested();
                     }

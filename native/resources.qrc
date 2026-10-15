@@ -4,6 +4,7 @@
 <file alias="web/voice-source.js">../web/dist/voice-source.js</file>
 <file alias="qml/Main.qml">../qml/Main.qml</file>
 <file alias="qml/components/Header.qml">../qml/components/Header.qml</file>
+<file alias="qml/components/ConnectionGuide.qml">../qml/components/ConnectionGuide.qml</file>
 <file alias="qml/components/PanelScrollView.qml">../qml/components/PanelScrollView.qml</file>
 <file alias="qml/components/CompactScrollBar.qml">../qml/components/CompactScrollBar.qml</file>
 <file alias="qml/components/ChoiceBox.qml">../qml/components/ChoiceBox.qml</file>

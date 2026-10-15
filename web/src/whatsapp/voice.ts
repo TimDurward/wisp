@@ -1,12 +1,39 @@
 import { records, context, messages, messageDirection, visible } from './messages';
 import { selectors } from './selectors';
-import { findVoicePlay, voiceContainerSelector, viewOnceSelector } from './voice-selectors';
+import {
+  findVoicePlay,
+  voiceContainerSelector,
+  viewOnceSelector,
+  voicePlaySelector,
+  voiceMarkerSelector,
+} from './voice-selectors';
 import type { VoiceNote } from '../contracts';
+const candidateSelector = voicePlaySelector + ', ' + voiceMarkerSelector;
 
-export function voiceNotes(main: HTMLElement | null): VoiceNote[] {
+export function voiceNotes(
+  main: HTMLElement | null,
+  candidates?: readonly HTMLElement[],
+): VoiceNote[] {
   const notes: VoiceNote[] = [];
   if (!main) return notes;
-  for (const container of records(main)) {
+  // Most rows are text. Query audio markers once instead of allocating several
+  // empty NodeLists for each text message on every scroll scan.
+  const markers = main.querySelectorAll(candidateSelector);
+  if (!markers.length) return notes;
+  const rows = candidates || records(main);
+  const valid = new Set(rows);
+  const possible = new Set<HTMLElement>();
+  for (const marker of markers) {
+    if (marker.closest(selectors.quote + ', [data-wisp]')) continue;
+    for (
+      let row = marker.closest<HTMLElement>(selectors.message);
+      row && main.contains(row);
+      row = row.parentElement?.closest<HTMLElement>(selectors.message) || null
+    )
+      if (valid.has(row)) possible.add(row);
+  }
+  for (const container of rows) {
+    if (!possible.has(container)) continue;
     if (container.querySelector(viewOnceSelector)) continue;
     const play = findVoicePlay(container);
     if (!play) continue;
@@ -22,7 +49,7 @@ export function voiceNotes(main: HTMLElement | null): VoiceNote[] {
   return notes;
 }
 export function voiceVisible(note: VoiceNote) {
-  return visible({ ...note, text: '', sourceElements: [] });
+  return visible(note);
 }
 function voiceElement(container: HTMLElement, play: HTMLElement, main: HTMLElement) {
   const named = play.closest<HTMLElement>('[data-pre-plain-text], ' + voiceContainerSelector);
@@ -39,11 +66,13 @@ function voiceElement(container: HTMLElement, play: HTMLElement, main: HTMLEleme
 export function voiceContext(main: HTMLElement | null, note: VoiceNote) {
   const rows = records(main),
     before = rows.indexOf(note.container);
+  if (before < 0) return [];
+  // A voice row may contain no selectable text. Use it as the anchor and read
+  // only its preceding text context, rather than decoding the entire history.
   return context(
-    messages(main).filter((message) => {
-      const index = rows.indexOf(message.container);
-      return index >= 0 && index < before;
-    }),
+    messages(main, new Set([note.id]), 8, rows.slice(0, before + 1)).filter(
+      (message) => message.container !== note.container,
+    ),
   );
 }
 function validSource(source: string) {

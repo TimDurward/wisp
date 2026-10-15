@@ -19,19 +19,25 @@ Tests never log in or send real messages. Browser tests exercise the production 
 
 ## Boundaries
 
-`src/app` coordinates commands, accounts, and translation requests. Authentication, inference, storage, preferences, and protocol modules own their own rules. `src/desktop` transports events; desktop and webpage events have explicit destinations. `src/platform` owns credential storage. Keep new platform work there rather than adding OS branches to application logic.
+`src/app` coordinates commands, accounts, and translation requests. Authentication, inference, storage, preferences, and protocol modules own their own rules. `src/desktop` transports events; desktop and webpage events have explicit destinations. `src/platform` owns credential storage through a shared `CredentialStore` interface. Keep new platform work there rather than adding OS branches to application logic.
+
+On macOS, credentials remain in Keychain, including the existing migration and access-control behavior. On Windows, the entire OAuth record is encrypted using current-user DPAPI and saved atomically under the profile's `credentials/` directory. Windows Credential Manager has a 2560-byte secret limit, which is insufficient for some OAuth records. DPAPI ciphertext is bound to the account and profile identity; there is no plaintext or machine-wide fallback. Sign-out removes that account's encrypted file. Moving a profile to another Windows user or computer may require signing in again. Ordinary settings and cached translations remain local JSON, and WhatsApp manages its own persistent Qt WebEngine profile.
 
 The narrow translation channel is the only native object exposed to WhatsApp, in WebEngine’s ApplicationWorld. Native settings and credentials never enter that channel. User-initiated draft preparation uses a completed, view-bound native ticket. Injected code never clicks Send or dispatches Enter.
 
-Voice notes are optional and start disabled. A small MainWorld helper associates WhatsApp's detached audio player with the clicked note and returns its media URL through a nonce-bound message. It has no native channel, credentials, transcripts, or file access. ApplicationWorld validates the source, decodes audio to 16 kHz mono PCM, and transfers acknowledged, bounded chunks. The backend checks chat/view identity, opt-in, message anchors, ordering, duration, and cancellation before local transcription. View-once recordings are excluded.
+Voice notes are optional and start disabled. A small MainWorld helper associates WhatsApp's detached audio player with the clicked note and returns its media URL through a nonce-bound message. It has no native channel, credentials, transcripts, or file access. ApplicationWorld validates the source, decodes audio offline to 16 kHz mono PCM without opening an audio output device, and transfers acknowledged, bounded chunks. The backend checks chat/view identity, opt-in, message anchors, ordering, duration, and cancellation before local transcription. View-once recordings are excluded.
 
-`src/speech` uses whisper.cpp through whisper-rs. CPU support is portable across macOS, Windows, and Linux; Apple Silicon builds also use Metal, with a CPU fallback. The desktop app's current platform support remains macOS. `.cargo/config.toml` disables host-specific CPU tuning for distributable binaries. Whisper's multilingual small weights download asynchronously from a fixed public URL and are verified by size and SHA-256 before atomic installation. No model is downloaded or loaded at app startup. The default length limit is 10 minutes, configurable to 5, 10, 20, or 30; each job captures its limit when it starts. Original transcripts are cached locally per chat, note, model version, and language override. Clearing chat translations also clears that chat's transcripts; disabling voice keeps the downloaded model for later use.
+`src/speech` uses whisper.cpp through whisper-rs. CPU support is portable across macOS, Windows, and Linux; Apple Silicon builds also use Metal, with a CPU fallback. Windows currently uses the CPU backend. `.cargo/config.toml` disables host-specific CPU tuning for distributable binaries. Whisper's multilingual small weights download asynchronously from a fixed public URL and are verified by size and SHA-256 before atomic installation. No model is downloaded or loaded at app startup. The default length limit is 10 minutes, configurable to 5, 10, 20, or 30; each job captures its limit when it starts. Original transcripts are cached locally per chat, note, model version, and language override. Clearing chat translations also clears that chat's transcripts; disabling voice keeps the downloaded model for later use.
 
 The optional real-audio smoke test uses a disposable directory containing `spanish.pcm` (16 kHz mono signed 16-bit little endian). Set `WISP_TEST_SPEECH_DIR` to that directory and run `cargo test real_recording_detects_spanish -- --ignored`; this downloads the model if needed. Ordinary tests remain offline. ChatGPT translation prompts preserve uncertain wording and facts; they do not claim to recover missing audio.
 
 Voice-note hydration uses a read-only, view-bound page request and checks that the note is among the current chat's message anchors. Completed voice translations are durable message history keyed by the source transcript and reading language, separate from the prompt cache. Restore needs neither model weights nor sign-in. Earlier prompt-cache entries migrate when their account/model/context key matches; legacy raw transcripts remain reusable. The latest manual source override is stored using hashed note identity. A changed reading language needs only a new text translation, and stale-view restore events are discarded.
 
 DOM assumptions live in `web/src/whatsapp`. UI changes must be reversible because WhatsApp owns the document. Keep tests near the feature they cover, and use Playwright rather than spoofing trusted events.
+
+Reading checks row visibility before reading message text, using child-bubble geometry for zero-height record wrappers. It reads the visible text and eight preceding text messages for context. Identity, visibility, edits, and cancellation are checked again before queued requests run. DOM record snapshots are shared within one synchronous scan and refreshed for each event. Voice detection starts with one query for audio markers instead of inspecting every text row separately.
+
+The browser's immediate layout is an accessible pane. Preserve this boundary when changing the shell: Qt WebEngine checks only its immediate parent, and a parent/child mismatch can make Windows accessibility sibling navigation loop. Voice controls and saved transcripts are restored as notes enter the viewport; existing rows remain stable while scrolling, with at most 64 tracked controls. Voice context reads only the preceding eight text messages.
 
 ## macOS packaging
 
@@ -50,6 +56,8 @@ cargo run --locked -- --smoke --data-dir=/tmp/wisp-check --screenshot=/tmp/wisp.
 ```
 
 `--diagnostics` enables counts-only adapter reports. Geometry captures are saved as `focus-layout-collapsed.json` and `focus-layout-expanded.json`; they omit contact names, message text, image URLs, and credentials.
+
+Geometry captures only run with `--diagnostics` or `--smoke`.
 
 Qt StyleKit is a technology preview in Qt 6.11. Validate upgrades. Automated accessibility inspection crashes the tested Qt Cocoa backend, so authenticated app checks still require manual interaction. CI and fixture checks do not certify WhatsApp compatibility or live account eligibility.
 
@@ -78,11 +86,64 @@ cargo run --locked
 
 Use Qt 6.11.2 (the CI version), with WebEngine, WebChannel, StyleKit, and SVG; Homebrew's `qt` can move ahead. With the Qt Online Installer, install the same modules as CI and set `QMAKE` to that SDK's `bin/qmake`. CXX-Qt and the packaging tools query that executable. Native tests build their own web fixtures and need no account or prior app run.
 
+### Windows
+
+The initial target is Windows x64 with Qt's MSVC 2022 build. Install:
+
+- Node.js 24 or newer and stable Rust (`x86_64-pc-windows-msvc`).
+- Visual Studio 2022 or Build Tools with **Desktop development with C++**, a Windows SDK, and **C++ Clang tools for Windows** (Whisper uses libclang during its build).
+- CMake 3.24+ and Ninja on `PATH`.
+- Qt 6.11.2 **MSVC 2022 64-bit**, including WebEngine, WebChannel, Positioning, and Shader Tools. StyleKit and SVG must also be present. MinGW Qt is not compatible with the Rust MSVC target.
+
+Using the same Qt downloader revision as CI, a user-local SDK can be installed from PowerShell:
+
+```powershell
+python -m venv "$env:LOCALAPPDATA/wisp/build-tools"
+& "$env:LOCALAPPDATA/wisp/build-tools/Scripts/python.exe" -m pip install 'aqtinstall @ git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7' cmake ninja
+& "$env:LOCALAPPDATA/wisp/build-tools/Scripts/python.exe" -m aqt install-qt windows desktop 6.11.2 win64_msvc2022_64 --outputdir "$env:LOCALAPPDATA/wisp/Qt" --modules qtwebengine qtwebchannel qtpositioning qtshadertools
+```
+
+Then, from the repository root in PowerShell:
+
+```powershell
+. ./tools/windows/env.ps1
+# For another Qt location: . ./tools/windows/env.ps1 -QtRoot C:/Qt/6.11.2/msvc2022_64
+npm.cmd ci
+cargo run --locked
+```
+
+The helper selects MSVC x64, sets `QMAKE`, and adds Qt's DLL directory and the user-local build tools to this shell's `PATH`. It changes no system environment settings. An extracted user-local MSVC/Windows SDK toolchain can be selected with `-MsvcRoot` or `WISP_MSVC_ROOT`; the default fallback is `%LOCALAPPDATA%/wisp/portable-toolchain/msvc`. `LIBCLANG_PATH` can override libclang discovery. Alternatively, `pip install libclang` in the build-tools environment provides a user-local copy that the helper detects. Run `cargo test --locked`, `cargo clippy --all-targets --locked -- -D warnings`, and `npm.cmd run test:native` in that same shell. `npm.cmd` avoids PowerShell execution-policy restrictions on `npm.ps1`.
+
+Windows Smart App Control can reject newly compiled Cargo build scripts with error 4551. This is an OS execution-policy block, not a missing dependency or a Wisp error. The setup helper does not change security settings; the machine owner must choose an appropriate development environment or policy. See [Microsoft's Smart App Control FAQ](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions).
+
+Qt selects the per-user application data path; use an explicit temporary profile for diagnostics:
+
+```powershell
+cargo run --locked -- --smoke "--data-dir=$env:TEMP/wisp-windows-check" "--screenshot=$env:TEMP/wisp-windows.png"
+```
+
+The shared Qt shell supplies Windows paths, browser launching, clipboard, native text input, and Ctrl-based shortcuts. Speech recognition uses the CPU backend; Metal remains a macOS optimization. The Windows release build uses the GUI subsystem to avoid a separate console window. The existing macOS bundle, signing, and archive scripts are separate deployment adapters.
+
+To create a Windows app folder and a distributable ZIP, install `cargo-about` (`cargo install cargo-about --version 0.9.2 --locked`), then run:
+
+```powershell
+. ./tools/windows/env.ps1
+npm.cmd run package:windows
+npm.cmd run release:windows
+./dist/Wisp-windows-x64/Wisp.exe
+```
+
+Packaging builds the release executable, generates Rust dependency notices, and runs the matching Qt SDK's `windeployqt` to include Qt DLLs, QML modules, and WebEngine helper/resources. It stages a fresh folder before replacing `dist/Wisp-windows-x64`, retains a previous build, and never includes a local profile, account, or model weights. Keep the entire folder together. The Microsoft Visual C++ v14 x64 Redistributable must be installed on the destination machine; `README.txt` links to Microsoft's installer. Compiler runtime DLLs from the development machine are not copied into the package. Local builds are unsigned; public distribution still needs signing and clean-machine validation.
+
+`release:windows` audits the folder, rejects profile data and symbolic links, and creates `dist/Wisp-<version>-windows-x64.zip` plus its `.sha256` checksum. Extract the ZIP to a permanent location and open `Wisp.exe` inside `Wisp-windows-x64`; shortcuts can point to that executable. Installation does not require Rust, Node.js, or the Qt SDK. Updates replace the app folder while leaving the Windows user profile in place; close Wisp before replacing it.
+
+Windows support is experimental. Local validation covers Rust credential/persistence tests, both Qt fixture suites, public-audio transcription, repeated voice decoding/transfer, and the packaged shell and Account settings with Qt's SDK paths removed from the environment. Display scaling, upgrades, and distribution on a clean machine still need validation before publishing Windows releases. The existing fixtures do not require accounts or send real messages.
+
 ## Releases
 
-Update the version in `Cargo.toml`, regenerate `Cargo.lock` with Cargo, commit both, and push a matching tag such as `v0.1.0`. `.github/workflows/release.yml` tests and builds on separate Apple Silicon and Intel runners, bundles Qt, and creates ZIP downloads with SHA-256 checksums in a **draft GitHub release**. Review the draft and publish it from GitHub. No local Keychain, profile, signing identity, or ChatGPT credential is used by the workflow.
+Update the version in `Cargo.toml`, regenerate `Cargo.lock` with Cargo, commit both, and push a matching tag such as `v0.1.0`. `.github/workflows/release.yml` tests and builds on separate macOS Apple Silicon, macOS Intel, and Windows x64 runners, bundles Qt, and creates all three ZIP downloads with SHA-256 checksums in a **draft GitHub release**. Every platform must succeed before the draft is created. Review the draft and publish it from GitHub. No local Keychain, profile, signing identity, or ChatGPT credential is used by the workflow.
 
-For a local archive, run `npm run release:mac` after packaging. GitHub tags must match Cargo's version. Release builds are currently ad hoc signed, not Apple notarized; Developer ID signing/notarization needs a separate Apple distribution setup. The private local signing identity used for development must never be uploaded as a release secret.
+For a local archive, run `npm run release:mac` or `npm.cmd run release:windows` after packaging. GitHub tags must match Cargo's version. Mac release builds are currently ad hoc signed, not Apple notarized; Developer ID signing/notarization needs a separate Apple distribution setup. Windows builds are unsigned. The private local signing identity used for development must never be uploaded as a release secret.
 
 Before sharing source, stage the intended files and scan a source-only export with `gitleaks dir --redact`. `.gitignore` excludes local profiles, cached chats, environment files, and signing material. The README demo is an illustration with fictional messages and translations; it is not an account recording or a live inference request.
 

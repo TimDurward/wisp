@@ -17,8 +17,10 @@ jobs:
             arch: arm64
           - os: macos-15-intel
             arch: x64
+          - os: windows-2022
+            arch: x64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       MACOSX_DEPLOYMENT_TARGET: '14.0'
     steps:
@@ -41,12 +43,24 @@ jobs:
           version: 6.11.2
           modules: qtwebengine qtwebchannel qtpositioning qtshadertools
           cache: true
+          aqtsource: ${{ runner.os == 'Windows' && 'git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7' || '' }}
       - name: Select Qt
+        shell: bash
         run: |
           qmake_path="$QT_ROOT_DIR/bin/qmake"
+          if [ "$RUNNER_OS" = Windows ]; then qmake_path="$qmake_path.exe"; fi
           "$qmake_path" -query QT_VERSION
           echo "QMAKE=$qmake_path" >> "$GITHUB_ENV"
+      - name: Select Windows build environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          . ./tools/windows/env.ps1
+          foreach ($name in @('PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'LIBCLANG_PATH', 'VCToolsInstallDir', 'WindowsSdkDir', 'WindowsSDKVersion', 'VSCMD_ARG_TGT_ARCH', 'VSCMD_ARG_HOST_ARCH')) {
+            "$name=$([Environment]::GetEnvironmentVariable($name))" >> $env:GITHUB_ENV
+          }
       - name: Validate release version
+        shell: bash
         run: test "$GITHUB_REF_NAME" = "v$(node tools/project.ts)"
       - run: npm ci
       - run: npm run check
@@ -55,12 +69,21 @@ jobs:
       - run: cargo test --locked
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: npm run test:native
-      - run: brew install cargo-about
-      - run: npm run package:mac -- --ad-hoc
-      - run: npm run release:mac
+      - if: runner.os == 'macOS'
+        run: brew install cargo-about
+      - if: runner.os == 'macOS'
+        run: npm run package:mac -- --ad-hoc
+      - if: runner.os == 'macOS'
+        run: npm run release:mac
+      - if: runner.os == 'Windows'
+        run: cargo install cargo-about --version 0.9.2 --locked
+      - if: runner.os == 'Windows'
+        run: npm run package:windows
+      - if: runner.os == 'Windows'
+        run: npm run release:windows
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: wisp-macos-${{ matrix.arch }}
+          name: wisp-${{ runner.os == 'Windows' && 'windows' || 'macos' }}-${{ matrix.arch }}
           path: |
             dist/Wisp-*.zip
             dist/Wisp-*.zip.sha256
@@ -75,7 +98,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          pattern: wisp-macos-*
+          pattern: wisp-*
           merge-multiple: true
           path: artifacts
       - name: Create draft release
@@ -87,7 +110,17 @@ jobs:
           cd artifacts
           sha256sum --check ./*.sha256
           cat > release-notes.md <<'NOTES'
-          Wisp for macOS 14+, with separate Apple Silicon and Intel downloads.
+          Wisp for macOS 14+ and experimental Windows x64.
+
+          ## Windows
+
+          1. Download and extract the **windows-x64** ZIP to a permanent folder.
+          2. Install the [Microsoft Visual C++ v14 x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe) if needed.
+          3. Open **Wisp.exe** inside the extracted folder. Keep the whole folder together; Qt is included.
+
+          Windows builds are experimental and unsigned. Settings, sign-in, and cached translations stay in your Windows user profile.
+
+          ## macOS
 
           Choose **arm64** for Apple Silicon (M-series) or **x64** for Intel. Apple menu → **About This Mac** shows which you have.
 

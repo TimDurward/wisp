@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::{io::Write, path::Path};
 
-pub(super) fn private_write(path: &Path, data: &[u8]) -> Result<()> {
+pub(crate) fn private_write(path: &Path, data: &[u8]) -> Result<()> {
     let parent = path
         .parent()
         .context("Storage path has no parent directory")?;

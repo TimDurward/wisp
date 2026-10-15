@@ -36,3 +36,4 @@
 **/focus-layout-*.json
 **/whatsapp/
 !/web/src/whatsapp/
+**/credentials/*.dpapi

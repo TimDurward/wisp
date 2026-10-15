@@ -153,7 +153,8 @@ export function voice(
   syncAppearance();
   const stopAppearance = onAppearanceChange(syncAppearance);
   note.element.append(panel);
-  let catalog = '';
+  let catalog = '',
+    rendered = '';
   return {
     element: panel,
     remove() {
@@ -172,6 +173,19 @@ export function voice(
       }
     },
     update(state: VoiceState, config: Config | null) {
+      // Scrolling scans the visible notes repeatedly. Preserve their DOM (and
+      // text selection) until the state or an applicable setting changes.
+      const snapshot = JSON.stringify([
+        state,
+        config?.voice_languages,
+        config?.speech,
+        config?.voice_enabled,
+        config?.voice_auto,
+        config?.can_translate,
+        config?.reading_label,
+      ]);
+      if (snapshot === rendered) return;
+      rendered = snapshot;
       const languages = config?.voice_languages || [],
         signature = JSON.stringify(languages);
       if (signature !== catalog) {

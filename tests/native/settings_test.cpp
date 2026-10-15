@@ -60,6 +60,63 @@ private Q_SLOTS:
         window->setProperty("captureDark", qEnvironmentVariableIsSet("WISP_SETTINGS_DARK"));
     }
     void init() { QMetaObject::invokeMethod(window, "resetFixture"); }
+    void disconnectedSetupExplainsAndConnectsWithoutEnablingChat() {
+        auto* banner = window->findChild<QQuickItem*>("setupBanner");
+        QVERIFY(banner);
+        auto* action = banner->findChild<QQuickItem*>("connectionGuideAction");
+        auto* title = banner->findChild<QQuickItem*>("connectionGuideTitle");
+        QVERIFY(action && title);
+        QVERIFY(banner->isVisible());
+        QCOMPARE(title->property("text").toString(),
+                 QStringLiteral("Connect ChatGPT to translate"));
+        QVERIFY(!snapshot().value("canToggle").toBool());
+        clickItem(action);
+        QCOMPARE(snapshot().value("lastCommand").toMap().value("type").toString(),
+                 QStringLiteral("sign_in"));
+        QCOMPARE(snapshot().value("commands").toInt(), 1);
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "auth"));
+        QVERIFY(!action->isVisible());
+        QVERIFY(title->property("text").toString().contains("browser"));
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "models"));
+        QVERIFY(!action->isVisible());
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "retry"));
+        QCOMPARE(action->property("text").toString(), QStringLiteral("Refresh models"));
+        clickItem(action);
+        QCOMPARE(snapshot().value("lastCommand").toMap().value("type").toString(),
+                 QStringLiteral("refresh_models"));
+        QCOMPARE(snapshot().value("commands").toInt(), 2);
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "ready"));
+        QVERIFY(!banner->isVisible());
+        QVERIFY(snapshot().value("canToggle").toBool());
+        QCOMPARE(snapshot().value("commands").toInt(), 2);
+    }
+    void setupHandlesPlanAccessAndSavedTranslations() {
+        auto* banner = window->findChild<QQuickItem*>("setupBanner");
+        QVERIFY(banner);
+        auto* action = banner->findChild<QQuickItem*>("connectionGuideAction");
+        QVERIFY(action);
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "plan"));
+        QCOMPARE(action->property("text").toString(), QStringLiteral("Account settings"));
+        clickItem(action);
+        QCOMPARE(snapshot().value("appPage").toInt(), 4);
+        QCOMPARE(snapshot().value("commands").toInt(), 0);
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "unavailable"));
+        QVERIFY(!action->isVisible());
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "cached"));
+        QVERIFY(snapshot().value("canToggle").toBool());
+        auto* settings = window->findChild<QObject*>("settingsDialog");
+        QMetaObject::invokeMethod(settings, "close");
+        QMetaObject::invokeMethod(window, "beginSetup");
+        capture("chat-connection-guide");
+        auto* dialog = window->findChild<QObject*>("rulesDialog");
+        QVERIFY(dialog);
+        auto* chatAction = dialog->findChild<QQuickItem*>("connectionGuideAction");
+        QVERIFY(chatAction && chatAction->isVisible());
+        QCOMPARE(chatAction->property("text").toString(), QStringLiteral("Connect ChatGPT"));
+        clickItem(chatAction);
+        QCOMPARE(snapshot().value("lastCommand").toMap().value("type").toString(),
+                 QStringLiteral("sign_in"));
+    }
     void unchangedRulesCanBeSaved() {
         QMetaObject::invokeMethod(window, "begin");
         auto* save = window->findChild<QQuickItem*>("rulesSaveButton");
@@ -84,8 +141,7 @@ private Q_SLOTS:
         QVERIFY(!save->isEnabled());
         QMetaObject::invokeMethod(window, "restoreChat");
         QVERIFY(save->isEnabled());
-        const auto point = save->mapToScene(QPointF(save->width() / 2, save->height() / 2));
-        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, point.toPoint());
+        clickItem(save);
         const auto result = snapshot();
         QCOMPARE(result.value("commands").toInt(), 1);
         const auto command = result.value("lastCommand").toMap();
