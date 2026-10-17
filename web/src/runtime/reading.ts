@@ -38,6 +38,7 @@ interface ReadingServices {
   submit: Submit;
   currentRecords: () => readonly HTMLElement[] | null;
   schedule: () => void;
+  translated: (message: Message, text: string) => void;
 }
 export function createReadingQueue(services: ReadingServices) {
   const submit = services.submit;
@@ -80,6 +81,7 @@ export function createReadingQueue(services: ReadingServices) {
 
   function renderResult(message: Message, result: ReadingResult) {
     const { config, preferences } = services.session();
+    if (!result.error && result.text) services.translated(message, result.text);
     UI.reading(
       message,
       result.error || result.text || null,

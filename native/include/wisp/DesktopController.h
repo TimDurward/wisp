@@ -13,6 +13,7 @@ class DesktopController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap state READ state NOTIFY stateChanged)
     Q_PROPERTY(bool authBusy READ authBusy NOTIFY authBusyChanged)
+    Q_PROPERTY(bool canCopyAuthLink READ canCopyAuthLink NOTIFY authLinkChanged)
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
     Q_PROPERTY(QString noticeKind READ noticeKind NOTIFY noticeChanged)
     Q_PROPERTY(QString dataRoot READ dataRoot CONSTANT)
@@ -25,6 +26,7 @@ public:
                       QObject* parent = nullptr);
     QVariantMap state() const { return state_; }
     bool authBusy() const { return authBusy_; }
+    bool canCopyAuthLink() const { return authBusy_ && !authUrl_.isEmpty(); }
     QString notice() const { return notice_; }
     QString noticeKind() const { return noticeKind_; }
     QString dataRoot() const { return root_; }
@@ -35,6 +37,7 @@ public:
     Q_INVOKABLE bool commitDraft(const QString& editId);
     Q_INVOKABLE void command(const QString& payload);
     Q_INVOKABLE void openUsage();
+    Q_INVOKABLE void copyAuthLink();
     Q_INVOKABLE void openExternal(const QUrl& url);
     Q_INVOKABLE bool isWhatsApp(const QUrl& url) const;
     Q_INVOKABLE void clearNotice();
@@ -43,6 +46,7 @@ Q_SIGNALS:
     void stateChanged();
     void appearanceChanged(bool dark);
     void authBusyChanged();
+    void authLinkChanged();
     void noticeChanged();
     void welcome();
     void rulesSaved(const QString& viewId);
@@ -57,6 +61,7 @@ private:
     QString noticeKind_ = QStringLiteral("info");
     QVariantMap state_;
     bool authBusy_ = false;
+    QUrl authUrl_;
     bool diagnostics_ = false;
     bool focusShortcutEnabled_ = false;
     QPointer<QObject> view_;

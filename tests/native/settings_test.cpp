@@ -117,6 +117,48 @@ private Q_SLOTS:
         QCOMPARE(snapshot().value("lastCommand").toMap().value("type").toString(),
                  QStringLiteral("sign_in"));
     }
+    void anotherAccountIsAvailableAfterSignOutAndUsesFreshSignIn() {
+        QMetaObject::invokeMethod(window, "beginAccount");
+        auto* add = window->findChild<QQuickItem*>("accountAddButton");
+        auto* copy = window->findChild<QQuickItem*>("accountCopySignInLink");
+        auto* help = window->findChild<QQuickItem*>("accountBrowserHelp");
+        QVERIFY(add && copy && help);
+        QVERIFY(add->isVisible() && add->isEnabled());
+        QVERIFY(!copy->isVisible() && !help->isVisible());
+        QMetaObject::invokeMethod(window, "setAccount", Q_ARG(QVariant, "account-a"),
+                                  Q_ARG(QVariant, false));
+        QVERIFY(add->isVisible() && add->isEnabled());
+        clickItem(add);
+        const auto command = snapshot().value("lastCommand").toMap();
+        QCOMPARE(command.value("type").toString(), QStringLiteral("sign_in"));
+        QCOMPARE(command.value("new_account").toBool(), true);
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "auth"));
+        QVERIFY(!add->isEnabled());
+        QVERIFY(copy->isVisible() && copy->isEnabled() && help->isVisible());
+        capture("account-private-sign-in");
+        clickItem(copy);
+        QCOMPARE(snapshot().value("authLinksCopied").toInt(), 1);
+        QCOMPARE(snapshot().value("commands").toInt(), 1);
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "ready"));
+        QVERIFY(!copy->isVisible() && !help->isVisible());
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "unavailable"));
+        QVERIFY(!add->isEnabled());
+    }
+    void firstSignInAlsoOffersPrivateBrowserFallback() {
+        QMetaObject::invokeMethod(window, "showAppPage", Q_ARG(QVariant, 4));
+        auto* connect = window->findChild<QQuickItem*>("accountConnectButton");
+        auto* copy = window->findChild<QQuickItem*>("accountCopySignInLink");
+        QVERIFY(connect && copy);
+        clickItem(connect);
+        QCOMPARE(snapshot().value("lastCommand").toMap().value("type").toString(),
+                 QStringLiteral("sign_in"));
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "auth"));
+        QVERIFY(copy->isVisible() && copy->isEnabled());
+        clickItem(copy);
+        QCOMPARE(snapshot().value("authLinksCopied").toInt(), 1);
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "disconnected"));
+        QVERIFY(!copy->isVisible());
+    }
     void unchangedRulesCanBeSaved() {
         QMetaObject::invokeMethod(window, "begin");
         auto* save = window->findChild<QQuickItem*>("rulesSaveButton");

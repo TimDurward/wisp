@@ -57,9 +57,10 @@ ColumnLayout {
                 Layout.fillWidth: true
             }
             SK.ToolButton {
-                visible: root.settings.session.connected
-                text: "Add account"
-                enabled: !root.settings.session.accountBusy
+                objectName: "accountAddButton"
+                visible: root.settings.session.connected || root.accounts.length > 0
+                text: "Use another account"
+                enabled: root.settings.session.credentialsAvailable && !root.settings.session.accountBusy
                 onClicked: root.settings.session.command("sign_in", {
                     new_account: true
                 })
@@ -70,6 +71,21 @@ ColumnLayout {
                 enabled: !root.settings.session.accountBusy
                 onClicked: root.settings.session.command("sign_out")
             }
+        }
+        Text {
+            objectName: "accountBrowserHelp"
+            visible: root.settings.session.desktop.canCopyAuthLink
+            text: "Browser choosing the wrong account? Copy the sign-in link and paste it into a private browser window, then sign in with the account you want."
+            color: Tokens.muted
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
+        SK.ToolButton {
+            objectName: "accountCopySignInLink"
+            visible: root.settings.session.desktop.canCopyAuthLink
+            text: "Copy sign-in link"
+            onClicked: root.settings.session.desktop.copyAuthLink()
         }
         SK.ToolButton {
             text: root.settings.advanced ? "Hide model and thinking" : "Model and thinking"

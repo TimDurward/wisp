@@ -98,10 +98,15 @@ SK.ApplicationWindow {
         property string noticeKind: ""
         property string notice: ""
         property bool authBusy: false
+        property bool canCopyAuthLink: false
+        property int authLinksCopied: 0
         property int commands: 0
         property var lastCommand: ({})
         signal rulesSaved(string viewId)
         signal translationPreferencesSaved
+        function copyAuthLink() {
+            authLinksCopied++;
+        }
         function command(payload) {
             commands++;
             lastCommand = JSON.parse(payload);
@@ -170,6 +175,8 @@ SK.ApplicationWindow {
         window.height = 660;
         desktop.commands = 0;
         desktop.authBusy = false;
+        desktop.canCopyAuthLink = false;
+        desktop.authLinksCopied = 0;
         desktop.lastCommand = ({});
         desktop.state = Object.assign({}, desktop.state, {
             conversation_id: "chat-a",
@@ -194,6 +201,7 @@ SK.ApplicationWindow {
     }
     function setupStage(stage) {
         desktop.authBusy = stage === "auth";
+        desktop.canCopyAuthLink = stage === "auth";
         desktop.state = Object.assign({}, desktop.state, {
             initialized: stage !== "starting",
             credentials_available: stage !== "unavailable",
@@ -304,6 +312,7 @@ SK.ApplicationWindow {
             changed: dialog.changed,
             commands: desktop.commands,
             lastCommand: desktop.lastCommand,
+            authLinksCopied: desktop.authLinksCopied,
             needsSetup: session.needsSetup,
             canToggle: session.canToggle
         };
