@@ -2,9 +2,11 @@
 #include "wisp/Editor.h"
 #include "wisp/WebOrigin.h"
 #include "wisp/src/desktop/bridge.cxxqt.h"
+#include <QClipboard>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QFile>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSaveFile>
@@ -47,15 +49,17 @@ DesktopController::DesktopController(WispBridge* backend, QString root, bool dia
         } else if (type == QStringLiteral("auth_busy")) {
             noticeKind_ = QStringLiteral("info");
             authBusy_ = event[QStringLiteral("busy")].toBool();
+            authUrl_.clear();
             Q_EMIT authBusyChanged();
+            Q_EMIT authLinkChanged();
             notice_ = authBusy_ ? QStringLiteral("Finish connecting in your browser.") : QString();
             Q_EMIT noticeChanged();
         } else if (type == QStringLiteral("open_auth")) {
             // Identity hints stay native, never entering QML state or the webpage.
             const QUrl url(event[QStringLiteral("url")].toString());
-            if (url.scheme() == QStringLiteral("https") &&
-                url.host() == QStringLiteral("auth.openai.com") &&
-                url.path() == QStringLiteral("/api/accounts/authorize")) {
+            if (authBusy_ && chatGptAuthUrl(url)) {
+                authUrl_ = copyableChatGptAuthUrl(url) ? url : QUrl();
+                Q_EMIT authLinkChanged();
                 QDesktopServices::openUrl(url);
             }
         } else if (type == QStringLiteral("welcome")) {
@@ -116,6 +120,16 @@ bool DesktopController::commitDraft(const QString& editId) {
 }
 void DesktopController::openUsage() {
     QDesktopServices::openUrl(QUrl(QStringLiteral("https://chatgpt.com/settings/usage")));
+}
+void DesktopController::copyAuthLink() {
+    if (!canCopyAuthLink()) {
+        return;
+    }
+    QGuiApplication::clipboard()->setText(authUrl_.toString(QUrl::FullyEncoded));
+    noticeKind_ = QStringLiteral("info");
+    notice_ = QStringLiteral("Sign-in link copied. Paste it into a private browser window to "
+                             "choose your ChatGPT account.");
+    Q_EMIT noticeChanged();
 }
 void DesktopController::openExternal(const QUrl& url) {
     if (externalWebUrl(url)) {

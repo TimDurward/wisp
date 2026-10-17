@@ -16,6 +16,7 @@ Wisp.Main {
         property string injectedScript: ""
         property string voiceSourceScript: ""
         property bool authBusy: false
+        property bool canCopyAuthLink: false
         property bool diagnostics: false
         property bool focusShortcutEnabled: false
         property string notice: ""

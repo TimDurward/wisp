@@ -49,6 +49,20 @@ html[data-wisp-theme='dark'] [data-wisp] {
   --wisp-line: #3a3a3a;
   --wisp-error: #edbb91;
 }
+.wisp-chat-preview-original {
+  display: none !important;
+}
+.wisp-chat-preview {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  color: inherit;
+}
 .wisp-inline {
   margin-top: 9px;
   padding-top: 8px;

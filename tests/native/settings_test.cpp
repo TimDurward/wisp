@@ -7,6 +7,7 @@
 #include <QQuickWindow>
 #include <QStyleHints>
 #include <QTest>
+#include <QtQuickTest/quicktest.h>
 #include <memory>
 
 class SettingsTest final : public QObject {
@@ -36,11 +37,20 @@ class SettingsTest final : public QObject {
         return search(search, content);
     }
     void clickItem(QQuickItem* item) {
-        // Let Qt polish the newly opened popup and its nested layouts before
-        // sampling scene coordinates; visibility alone does not imply layout.
-        QTest::qWait(60);
-        const auto point = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
-        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, point.toPoint());
+        // Newly visible controls can move during nested layout polish. Wait for
+        // the whole window instead of guessing how many frames CI will need.
+        QVERIFY(QQuickTest::qWaitForPolish(window));
+        QVERIFY(item->isVisible() && item->isEnabled());
+        QVERIFY(item->width() > 0 && item->height() > 0);
+        const auto point = item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint();
+        QVERIFY(QRect(QPoint(0, 0), window->size()).contains(point));
+        for (auto* parent = item->parentItem(); parent; parent = parent->parentItem()) {
+            if (parent->clip()) {
+                QVERIFY2(parent->contains(parent->mapFromScene(point)),
+                         qPrintable(item->objectName() + " is clipped at its click point"));
+            }
+        }
+        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, point);
     }
     void capture(const QString& name) {
         const auto directory = qEnvironmentVariable("WISP_SETTINGS_CAPTURE");
@@ -116,6 +126,48 @@ private Q_SLOTS:
         clickItem(chatAction);
         QCOMPARE(snapshot().value("lastCommand").toMap().value("type").toString(),
                  QStringLiteral("sign_in"));
+    }
+    void anotherAccountIsAvailableAfterSignOutAndUsesFreshSignIn() {
+        QMetaObject::invokeMethod(window, "beginAccount");
+        auto* add = window->findChild<QQuickItem*>("accountAddButton");
+        auto* copy = window->findChild<QQuickItem*>("accountCopySignInLink");
+        auto* help = window->findChild<QQuickItem*>("accountBrowserHelp");
+        QVERIFY(add && copy && help);
+        QVERIFY(add->isVisible() && add->isEnabled());
+        QVERIFY(!copy->isVisible() && !help->isVisible());
+        QMetaObject::invokeMethod(window, "setAccount", Q_ARG(QVariant, "account-a"),
+                                  Q_ARG(QVariant, false));
+        QVERIFY(add->isVisible() && add->isEnabled());
+        clickItem(add);
+        const auto command = snapshot().value("lastCommand").toMap();
+        QCOMPARE(command.value("type").toString(), QStringLiteral("sign_in"));
+        QCOMPARE(command.value("new_account").toBool(), true);
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "auth"));
+        QVERIFY(!add->isEnabled());
+        QVERIFY(copy->isVisible() && copy->isEnabled() && help->isVisible());
+        capture("account-private-sign-in");
+        clickItem(copy);
+        QCOMPARE(snapshot().value("authLinksCopied").toInt(), 1);
+        QCOMPARE(snapshot().value("commands").toInt(), 1);
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "ready"));
+        QVERIFY(!copy->isVisible() && !help->isVisible());
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "unavailable"));
+        QVERIFY(!add->isEnabled());
+    }
+    void firstSignInAlsoOffersPrivateBrowserFallback() {
+        QMetaObject::invokeMethod(window, "showAppPage", Q_ARG(QVariant, 4));
+        auto* connect = window->findChild<QQuickItem*>("accountConnectButton");
+        auto* copy = window->findChild<QQuickItem*>("accountCopySignInLink");
+        QVERIFY(connect && copy);
+        clickItem(connect);
+        QCOMPARE(snapshot().value("lastCommand").toMap().value("type").toString(),
+                 QStringLiteral("sign_in"));
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "auth"));
+        QVERIFY(copy->isVisible() && copy->isEnabled());
+        clickItem(copy);
+        QCOMPARE(snapshot().value("authLinksCopied").toInt(), 1);
+        QMetaObject::invokeMethod(window, "setupStage", Q_ARG(QVariant, "disconnected"));
+        QVERIFY(!copy->isVisible());
     }
     void unchangedRulesCanBeSaved() {
         QMetaObject::invokeMethod(window, "begin");

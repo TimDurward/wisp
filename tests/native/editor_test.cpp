@@ -64,6 +64,32 @@ private Q_SLOTS:
             QVERIFY(!wisp::externalWebUrl(QUrl(url)));
         }
     }
+    void signInClipboardOnlyAcceptsFreshRegistrationLinks() {
+        const QString fresh = "https://auth.openai.com/api/accounts/authorize?"
+                              "client_id=dynamic_agent_client&agent_name_hint=Wisp&"
+                              "state=state&nonce=nonce&code_challenge=challenge&"
+                              "redirect_uri=http%3A%2F%2F127.0.0.1%3A1234%2Fauth%2Fcallback";
+        QVERIFY(wisp::chatGptAuthUrl(QUrl(fresh)));
+        QVERIFY(wisp::copyableChatGptAuthUrl(QUrl(fresh)));
+        for (const auto* hint : {"id_token_hint", "login_hint", "access_token", "refresh_token"}) {
+            const QUrl hinted(fresh + "&" + hint + "=private");
+            QVERIFY(wisp::chatGptAuthUrl(hinted));
+            QVERIFY(!wisp::copyableChatGptAuthUrl(hinted));
+        }
+        QVERIFY(!wisp::copyableChatGptAuthUrl(
+            QUrl("https://auth.openai.com/api/accounts/authorize?client_id=registered")));
+        for (const auto* url :
+             {"http://auth.openai.com/api/accounts/authorize?client_id=dynamic_agent_client",
+              "https://other.example/api/accounts/authorize?client_id=dynamic_agent_client",
+              "https://auth.openai.com:8443/api/accounts/authorize?client_id=dynamic_agent_client",
+              "https://user@auth.openai.com/api/accounts/authorize?client_id=dynamic_agent_client",
+              "https://auth.openai.com/other?client_id=dynamic_agent_client",
+              "https://auth.openai.com/api/accounts/"
+              "authorize?client_id=dynamic_agent_client#here"}) {
+            QVERIFY(!wisp::chatGptAuthUrl(QUrl(url)));
+            QVERIFY(!wisp::copyableChatGptAuthUrl(QUrl(url)));
+        }
+    }
     void nativeInputAndPresentation() {
         EditingCheck check;
         check.root = QStringLiteral(WISP_SOURCE_DIR);

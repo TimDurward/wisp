@@ -10,9 +10,17 @@ Download the app from [GitHub Releases](https://github.com/TimDurward/wisp/relea
 
 Wisp uses your ChatGPT subscription, with no API key or separate API billing setup. Your plan's model access and usage limits apply. The setup guide explains when sign-in or model selection is still needed.
 
+## Switching ChatGPT accounts
+
+Open **App settings → Account** and choose **Use another account**. This is available after signing out too. Once connected, use the account picker to switch between saved accounts.
+
+If your browser keeps choosing the previous ChatGPT login, choose **Copy sign-in link** in Wisp while the new account is connecting. Paste that link into a private or incognito window on the same computer, sign in with the account you want, and return to Wisp. Complete this within three minutes; if the attempt times out, start again for a fresh link. Signing out of Wisp does not sign you out of ChatGPT in your browser.
+
 ## Messages and replies
 
 Translations appear inline as you read and scroll. Type a reply in your language and preview its translation before sending. You decide when to send.
+
+For chats with translation enabled, the chat-list preview also shows a matching completed message translation. Hover over it to see the original. New messages keep their original preview until translated in the conversation; previews do not trigger extra translation requests. Turning translation off restores the native preview.
 
 URLs stay unchanged, translated links remain clickable, and WhatsApp link previews are preserved. Link-only messages skip translation. Saved translations stay on this device and reappear when you return to a chat.
 
