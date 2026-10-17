@@ -7,6 +7,7 @@
 #include <QQuickWindow>
 #include <QStyleHints>
 #include <QTest>
+#include <QtQuickTest/quicktest.h>
 #include <memory>
 
 class SettingsTest final : public QObject {
@@ -36,11 +37,20 @@ class SettingsTest final : public QObject {
         return search(search, content);
     }
     void clickItem(QQuickItem* item) {
-        // Let Qt polish the newly opened popup and its nested layouts before
-        // sampling scene coordinates; visibility alone does not imply layout.
-        QTest::qWait(60);
-        const auto point = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
-        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, point.toPoint());
+        // Newly visible controls can move during nested layout polish. Wait for
+        // the whole window instead of guessing how many frames CI will need.
+        QVERIFY(QQuickTest::qWaitForPolish(window));
+        QVERIFY(item->isVisible() && item->isEnabled());
+        QVERIFY(item->width() > 0 && item->height() > 0);
+        const auto point = item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint();
+        QVERIFY(QRect(QPoint(0, 0), window->size()).contains(point));
+        for (auto* parent = item->parentItem(); parent; parent = parent->parentItem()) {
+            if (parent->clip()) {
+                QVERIFY2(parent->contains(parent->mapFromScene(point)),
+                         qPrintable(item->objectName() + " is clipped at its click point"));
+            }
+        }
+        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, point);
     }
     void capture(const QString& name) {
         const auto directory = qEnvironmentVariable("WISP_SETTINGS_CAPTURE");
