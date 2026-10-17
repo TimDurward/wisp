@@ -20,6 +20,8 @@ If your browser keeps choosing the previous ChatGPT login, choose **Copy sign-in
 
 Translations appear inline as you read and scroll. Type a reply in your language and preview its translation before sending. You decide when to send.
 
+For chats with translation enabled, the chat-list preview also shows a matching completed message translation. Hover over it to see the original. New messages keep their original preview until translated in the conversation; previews do not trigger extra translation requests. Turning translation off restores the native preview.
+
 URLs stay unchanged, translated links remain clickable, and WhatsApp link previews are preserved. Link-only messages skip translation. Saved translations stay on this device and reappear when you return to a chat.
 
 **Chat translation** controls the current conversation, including languages, rules, and saved history. **App settings** holds defaults for all chats, with Languages, Voice, Chat, Rules, and Account sections. Choose your model and thinking level in Account. Language detection is automatic; you can choose from 100 text-language presets or add a language and regional style.

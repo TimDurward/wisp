@@ -3,6 +3,7 @@ import { UI } from '../ui';
 import { FocusLayout } from '../ui/focus';
 import { createDraft } from './draft';
 import { createReadingQueue } from './reading';
+import { createChatPreviews } from './previews';
 import { watchAppearance, refreshAppearance } from '../ui/appearance';
 import { createVoices } from './voice';
 import type {
@@ -67,11 +68,13 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
     session: () => ({ active, enabled, config, preferences }),
     isCurrentView: () => currentView(WhatsApp.active()),
   });
+  const previews = createChatPreviews(() => ({ active, enabled, config, preferences }));
   const readings = createReadingQueue({
     submit,
     session: () => ({ active, enabled, config, preferences }),
     currentRecords,
     schedule,
+    translated: previews.remember,
   });
   const draft = createDraft({
     submit,
@@ -169,6 +172,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
         message_ids: next.messageIds,
       });
     }
+    previews.scan();
     if (!enabled || !active.conversation) return;
     if (config?.can_translate) draft.bind(active.main, config);
     readings.scan(rows);
@@ -229,6 +233,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
       preferences = nextPreferences;
       FocusLayout.configure(preferences.focus_chat);
       config = { ...value, view_preferences: preferences };
+      previews.configure(config);
       if (!enabled || !config.can_translate) draft.reset();
       else if (currentView(WhatsApp.active())) draft.bind(active.main, config);
       schedule();
@@ -248,6 +253,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
     }
   });
   const observer = new MutationObserver((mutations) => {
+    previews.observe(mutations);
     // Translation UI must not recursively trigger scans of its own inserted nodes.
     if (
       mutations.some(
@@ -268,7 +274,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
     subtree: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ['data-id', 'title', 'aria-selected'],
+    attributeFilter: ['data-id', 'title', 'aria-selected', 'src'],
   });
   // Continue a registered chat through virtualized history only after a real
   // scrolling gesture. Navigation outside the panel invalidates that intent.
@@ -347,6 +353,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
     dispose() {
       window.clearTimeout(timer);
       observer.disconnect();
+      previews.clear();
       readings.clear();
       voices.clear();
       draft.dispose();

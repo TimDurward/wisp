@@ -4,6 +4,7 @@ import * as conversation from './conversation';
 import * as composer from './composer';
 import * as layout from './layout';
 import * as voice from './voice';
+import * as previews from './previews';
 import { selectors } from './selectors';
 
 export const WhatsApp = {
@@ -14,4 +15,5 @@ export const WhatsApp = {
   ...composer,
   ...layout,
   ...voice,
+  ...previews,
 };
