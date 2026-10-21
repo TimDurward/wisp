@@ -23,17 +23,15 @@ impl Engine {
                 }
                 return Ok(());
             }
-            if request.purpose != TranslationPurpose::Reply {
-                let key = translation::saved_key(
-                    &request,
-                    &state.storage.settings.translation_preferences,
-                );
-                if let Some(text) = state.storage.saved_message(&key, &request.conversation) {
-                    if state.requests.contains(&request.request_id) {
-                        self.emit_page(json!({"type":"translation","request_id":request.request_id,"conversation":request.conversation,"text":text,"cached":true}));
-                    }
-                    return Ok(());
+            if request.purpose != TranslationPurpose::Reply
+                && let Some(text) = state
+                    .storage
+                    .saved_message_for(&request, &state.storage.settings.translation_preferences)
+            {
+                if state.requests.contains(&request.request_id) {
+                    self.emit_page(json!({"type":"translation","request_id":request.request_id,"conversation":request.conversation,"text":text,"cached":true}));
                 }
+                return Ok(());
             }
             ensure!(
                 state.translation_ready,
@@ -75,7 +73,14 @@ impl Engine {
             epoch,
         );
         let history_key = translation::saved_key(&request, &preferences);
-        let cached = self.state.lock().await.storage.cached(&key);
+        let cached = self.state.lock().await.storage.cached_for_request(
+            &account,
+            &options.cache_model(),
+            &request,
+            &rules,
+            &preferences,
+            epoch,
+        );
         if let Some(text) = cached {
             let mut state = self.state.lock().await;
             if state.valid_request(&request, generation) {

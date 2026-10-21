@@ -10,8 +10,10 @@ Wisp.Main {
     translationChannel: channel
     initialWhatsAppUrl: "about:blank"
     iconRoot: Qt.resolvedUrl("../../../assets/icons/").toString()
+    readonly property int fixtureCommandCount: controller.commandCount
     QtObject {
         id: controller
+        property int commandCount: 0
         property string dataRoot: shell.fixtureRoot
         property string injectedScript: ""
         property string voiceSourceScript: ""
@@ -63,6 +65,7 @@ Wisp.Main {
         signal draftEditRequested(string payload)
         signal focusShortcutRequested
         function command(payload) {
+            commandCount++;
         }
         function clearNotice() {
         }
@@ -90,5 +93,8 @@ Wisp.Main {
     }
     function updateFixtureTheme(dark) {
         controller.appearanceChanged(dark);
+    }
+    function updateFixtureState(fields) {
+        controller.state = Object.assign({}, controller.state, fields);
     }
 }

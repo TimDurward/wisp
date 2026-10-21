@@ -59,6 +59,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
   let preferences = { ...defaults };
   let navigationSerial = 0,
     emptyNavigationSerial = 0,
+    emptyViewNavigationSerial = 0,
     viewNavigationSerial = 0,
     historyIntent: number | null = null;
   const submit: Submit = (value) => native.submit(JSON.stringify(value));
@@ -98,19 +99,43 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
     configurable: true,
     value: FocusLayout.diagnostics,
   });
+  // Native repair must confirm the exact, still-open snapshot in the isolated
+  // world. Merely matching a display name or accepting the last scan is unsafe.
+  Object.defineProperty(window, '__wispChatRepair', {
+    configurable: true,
+    value: (viewId: string) => {
+      const next = WhatsApp.active();
+      if (
+        viewId !== active.viewId ||
+        navigationSerial !== viewNavigationSerial ||
+        next.detection !== 'ready' ||
+        !currentView(next) ||
+        next.messageIds.join('|') !== active.messageIds.join('|')
+      )
+        return null;
+      return { view_id: active.viewId, message_ids: [...next.messageIds] };
+    },
+  });
   function viewChanged(next: Chat) {
-    const disjoint =
-      next.messageIds.length &&
-      active.messageIds.length &&
-      !next.messageIds.some((id) => active.messageIds.includes(id));
+    const overlap = next.messageIds.some((id) => active.messageIds.includes(id));
+    const disjoint = next.messageIds.length && active.messageIds.length && !overlap;
+    const history = historyIntent === navigationSerial && next.main === active.main;
+    // WhatsApp replaces its header and selected sidebar row during ordinary
+    // renders. Message overlap proves continuity, provided no navigation has
+    // intervened. A trusted history gesture also permits virtualized rows and
+    // their header to be replaced inside the existing conversation panel.
+    const rerender = navigationSerial === viewNavigationSerial && (overlap || history);
     return (
-      (next.conversation !== active.peer && !(active.detection === 'empty' && !active.peer)) ||
+      (next.conversation !== active.peer &&
+        !(active.detection === 'empty' && !active.peer) &&
+        !(history && !next.messageIds.length)) ||
       next.title !== active.title ||
-      next.main !== active.main ||
-      next.header !== active.header ||
-      next.selection !== active.selection ||
-      (active.detection === 'empty' && emptyNavigationSerial !== viewNavigationSerial) ||
-      (disjoint && !next.conversation && historyIntent !== navigationSerial)
+      (next.main !== active.main && !rerender) ||
+      (next.header !== active.header && !rerender) ||
+      (next.selection !== active.selection && !rerender) ||
+      ((active.detection === 'empty' || next.detection === 'empty') &&
+        emptyNavigationSerial !== emptyViewNavigationSerial) ||
+      (disjoint && !next.conversation && !history)
     );
   }
   function currentView(next: Chat) {
@@ -143,7 +168,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
     // Keep the established view through a transient history-loading gap.
     if (
       !changedView &&
-      next.detection === 'waiting_for_messages' &&
+      ['empty', 'waiting_for_messages'].includes(next.detection) &&
       active.conversation &&
       historyIntent === navigationSerial
     )
@@ -155,6 +180,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
         active.conversation = '';
         active.viewId = crypto.randomUUID();
         historyIntent = null;
+        viewNavigationSerial = navigationSerial;
       }
       active = {
         ...next,
@@ -162,7 +188,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
         conversation: active.conversation,
         viewId: active.viewId,
       };
-      viewNavigationSerial = emptyNavigationSerial;
+      emptyViewNavigationSerial = emptyNavigationSerial;
       submit({
         type: 'active_conversation',
         conversation: next.conversation,
@@ -172,6 +198,11 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
         message_ids: next.messageIds,
       });
     }
+    // Continuity can outlive the DOM nodes that established it. Keep consumers
+    // bound to the current panel even when its message snapshot is unchanged.
+    active.main = next.main;
+    active.header = next.header;
+    active.selection = next.selection;
     previews.scan();
     if (!enabled || !active.conversation) return;
     if (config?.can_translate) draft.bind(active.main, config);
@@ -292,6 +323,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
   listen(
     'pointerdown',
     (event) => {
+      if (event.target instanceof Element && event.target.closest('[data-wisp]')) return;
       if (!active.main?.contains(event.target instanceof Node ? event.target : null)) {
         emptyNavigationSerial++;
         if (active.detection === 'empty') schedule();
@@ -365,6 +397,7 @@ export function createRuntime(native: NativeChannel, diagnostics = false) {
       delete window.__wispLayout;
       delete window.__wispReadLayout;
       delete window.__wispReadStructure;
+      delete window.__wispChatRepair;
     },
   };
 }

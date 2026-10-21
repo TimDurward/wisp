@@ -307,14 +307,13 @@ impl Engine {
         {
             return Ok(());
         }
-        let key = speech::cache_key(
-            &request.conversation,
-            &request.message_id,
-            request.language.as_deref(),
-        );
         if let Some(transcript) = state
             .storage
-            .transcript(&key, &request.conversation)
+            .transcript_for_message(
+                &request.conversation,
+                &request.message_id,
+                request.language.as_deref(),
+            )
             .filter(|_| !request.retranscribe)
         {
             state.storage.remember_voice(
@@ -398,7 +397,7 @@ impl Engine {
             let history_key = translation::saved_key(&translation_request, preferences);
             let mut text = state
                 .storage
-                .saved_message(&history_key, &request.conversation);
+                .saved_message_for(&translation_request, preferences);
             // Migrate completed voice translations saved by earlier builds.
             // This reads only local metadata/cache; it never contacts ChatGPT.
             if text.is_none() {
@@ -411,7 +410,7 @@ impl Engine {
                         state.storage.settings.model_reasoning.get(model).copied(),
                     );
                     let chat = state.storage.preferences(&request.conversation);
-                    let key = translation::cache_key(
+                    text = state.storage.cached_for_request(
                         account,
                         &options.cache_model(),
                         &translation_request,
@@ -419,7 +418,6 @@ impl Engine {
                         preferences,
                         chat.cache_epoch,
                     );
-                    text = state.storage.cached(&key);
                 }
                 if let Some(text) = &text {
                     state

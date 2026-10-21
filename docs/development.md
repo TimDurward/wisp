@@ -167,3 +167,13 @@ Automatic voice processing is enabled by default only after voice opt-in. The fr
 The browser samples WhatsApp’s native surfaces when its root theme or stylesheet changes. Voice hosts temporarily remove Wisp paint while sampling, preventing stale colors from becoming their own source. Open popovers refresh too. A bounded appearance event carries only a light/dark flag to the native shell; it changes no stored settings, credentials, or chat state.
 
 The Quiet Companion shell uses a 44px toolbar with chat translation and app settings as distinct entry points. The view-bound chat panel keeps activation, rules, and saved history scoped to its captured conversation. App settings use five sidebar sections: Languages, Voice, Chat, Rules, and Account. A blank initial browser URL supports an offline full-shell regression fixture; production starts at WhatsApp’s URL and retains its origin checks.
+
+Chat identity survives WhatsApp shell rerenders when message anchors overlap, and
+trusted history scrolling keeps the same view through temporary loading gaps.
+Different contacts with the same display name remain separate. Conflicting saved
+anchors still disable translation; the native Reconnect chat action requires a
+fresh, unchanged view and explicit confirmation. Repair links only those stored
+identities and persists their aliases atomically in settings. Existing translation
+and transcript files retain their original keys and content; reads, counts, and
+chat-scoped clearing resolve all aliases. Different peer addresses or conflicting
+chat rules cannot be merged by this action.
