@@ -29,6 +29,29 @@ impl Engine {
         };
         match command {
             NativeCommand::Status => {}
+            NativeCommand::RepairChat {
+                view_id,
+                sequence,
+                message_ids,
+            } => {
+                let mut state = self.state.lock().await;
+                ensure!(
+                    state.can_repair_chat
+                        && state.view_id == view_id
+                        && state.active_sequence == sequence
+                        && state.message_ids == message_ids,
+                    "The chat changed. Open its repair options again"
+                );
+                let peer = state.peer.clone();
+                let conversation = state.storage.repair_chat(&peer, &message_ids, None)?;
+                state.generation += 1;
+                state.requests.clear();
+                state.completed_replies.clear();
+                state.conversation = conversation;
+                state.can_repair_chat = false;
+                state.detection = ConversationDetection::Ready;
+                self.emit_desktop(json!({"type":"notice","kind":"success","message":"Chat reconnected. Your saved translations are still available."}));
+            }
             NativeCommand::DownloadSpeechModel => {
                 let ready = self.speech.status().ready;
                 self.enable_voice(true).await?;

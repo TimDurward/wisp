@@ -219,6 +219,395 @@ fn opaque_message_records_preserve_chat_identity_and_opt_in() {
     assert!(!saved.contains(&a));
     assert!(!saved.contains(&b));
 }
+
+fn reading_request(
+    conversation: &str,
+    message_id: &str,
+    text: &str,
+) -> crate::protocol::TranslationRequest {
+    crate::protocol::TranslationRequest {
+        request_id: "request".into(),
+        conversation: conversation.into(),
+        message_id: message_id.into(),
+        direction: crate::protocol::Direction::Incoming,
+        purpose: crate::protocol::TranslationPurpose::Reading,
+        text: text.into(),
+        context: vec![],
+    }
+}
+
+#[test]
+fn explicit_chat_repair_preserves_every_history_namespace_across_restart() {
+    let fixture = tempfile::tempdir().unwrap();
+    let dir = fixture.path().to_path_buf();
+    let mut storage = Storage::open(dir.clone()).unwrap();
+    let first_messages = vec!["first".into(), "first-offscreen".into()];
+    let second_messages = vec!["second".into(), "second-offscreen".into()];
+    let first = storage.identify_chat("", &first_messages, None).unwrap();
+    let second = storage.identify_chat("", &second_messages, None).unwrap();
+    let unrelated = storage
+        .identify_chat("", &["unrelated".into()], None)
+        .unwrap();
+    storage.set_enabled(&first, true).unwrap();
+    storage.set_rules(&first, "Use usted.").unwrap();
+    storage.set_rules(&second, "Use usted.").unwrap();
+    storage
+        .settings
+        .conversations
+        .get_mut(&hash(&first))
+        .unwrap()
+        .cache_epoch = 2;
+    storage
+        .settings
+        .conversations
+        .get_mut(&hash(&second))
+        .unwrap()
+        .cache_epoch = 7;
+    storage.save().unwrap();
+    let preferences = TranslationPreferences::default();
+    let first_request = reading_request(&first, "first", "Hola");
+    let second_request = reading_request(&second, "second", "Mañana");
+    for (request, translation) in [(&first_request, "Hello"), (&second_request, "Tomorrow")] {
+        storage
+            .save_message(
+                crate::translation::saved_key(request, &preferences),
+                &request.conversation,
+                translation.into(),
+            )
+            .unwrap();
+        let key = crate::translation::cache_key(
+            "account",
+            "model",
+            request,
+            "Use usted.",
+            &preferences,
+            storage.preferences(&request.conversation).cache_epoch,
+        );
+        storage
+            .cache_for_chat(key, translation.into(), &request.conversation)
+            .unwrap();
+    }
+    storage
+        .save_message("unrelated-key".into(), &unrelated, "Unrelated".into())
+        .unwrap();
+    let transcript = crate::speech::Transcript {
+        text: "Una nota".into(),
+        language: "es".into(),
+        confidence: None,
+        review: false,
+    };
+    storage
+        .save_transcript(
+            crate::speech::cache_key(&first, "voice-first", None),
+            &first,
+            transcript.clone(),
+        )
+        .unwrap();
+    storage
+        .save_transcript(
+            crate::speech::cache_key(&second, "voice-second", Some("es")),
+            &second,
+            transcript.clone(),
+        )
+        .unwrap();
+    storage
+        .remember_voice(&second, "voice-second", Some("es"))
+        .unwrap();
+    storage
+        .save_transcript("unrelated-voice".into(), &unrelated, transcript)
+        .unwrap();
+    let history_files = [
+        "saved-messages.json",
+        "translations.json",
+        "voice-transcripts.json",
+    ];
+    let original_files: Vec<_> = history_files
+        .iter()
+        .map(|name| fs::read(dir.join(name)).unwrap())
+        .collect();
+    let joined = vec!["first".into(), "second".into()];
+    let original_settings = fs::read(dir.join("settings.json")).unwrap();
+    assert!(storage.identify_chat("", &joined, None).is_err());
+    assert_eq!(
+        fs::read(dir.join("settings.json")).unwrap(),
+        original_settings
+    );
+    assert_eq!(storage.identity_candidates(&joined).len(), 2);
+    let canonical = storage.repair_chat("", &joined, None).unwrap();
+    assert_eq!(
+        canonical, first,
+        "keep the identity which was already enabled"
+    );
+    assert_eq!(storage.conversation_ids(&canonical).len(), 2);
+    for (name, original) in history_files.iter().zip(original_files) {
+        assert_eq!(
+            fs::read(dir.join(name)).unwrap(),
+            original,
+            "repair must not rewrite {name}"
+        );
+    }
+
+    let mut storage = Storage::open(dir.clone()).unwrap();
+    assert_eq!(storage.identify_chat("", &joined, None).unwrap(), canonical);
+    assert_eq!(
+        storage
+            .identify_chat("", &["second-offscreen".into()], Some(&second))
+            .unwrap(),
+        canonical
+    );
+    assert_eq!(
+        storage.identity_candidates(&joined),
+        vec![canonical.clone()]
+    );
+    assert!(storage.enabled(&second));
+    assert_eq!(storage.preferences(&second).rules, "Use usted.");
+    for (original_request, expected) in [(first_request, "Hello"), (second_request, "Tomorrow")] {
+        let request = crate::protocol::TranslationRequest {
+            conversation: canonical.clone(),
+            ..original_request
+        };
+        assert_eq!(
+            storage.saved_message_for(&request, &preferences).as_deref(),
+            Some(expected)
+        );
+        assert_eq!(
+            storage
+                .cached_for_request(
+                    "account",
+                    "model",
+                    &request,
+                    "Use usted.",
+                    &preferences,
+                    storage.preferences(&canonical).cache_epoch
+                )
+                .as_deref(),
+            Some(expected)
+        );
+        let foreign = crate::protocol::TranslationRequest {
+            conversation: unrelated.clone(),
+            ..request
+        };
+        assert!(storage.saved_message_for(&foreign, &preferences).is_none());
+        assert!(
+            storage
+                .cached_for_request("account", "model", &foreign, "Use usted.", &preferences, 2)
+                .is_none()
+        );
+    }
+    assert!(
+        storage
+            .transcript_for_message(&canonical, "voice-first", None)
+            .is_some()
+    );
+    assert!(
+        storage
+            .transcript_for_message(&canonical, "voice-second", Some("es"))
+            .is_some()
+    );
+    assert_eq!(
+        storage
+            .voice_transcript(&canonical, "voice-second")
+            .unwrap()
+            .1
+            .as_deref(),
+        Some("es")
+    );
+    assert!(
+        storage
+            .voice_transcript(&unrelated, "voice-second")
+            .is_none()
+    );
+    assert_eq!(storage.saved_count(), 3);
+    assert_eq!(storage.cache_count(), 2);
+    assert_eq!(storage.transcript_count(), 3);
+    assert_eq!(storage.chat_cache_count(&second), 4);
+    storage.clear_chat_cache(&second).unwrap();
+    assert_eq!(storage.saved_count(), 1);
+    assert_eq!(storage.cache_count(), 0);
+    assert_eq!(storage.transcript_count(), 1);
+    assert!(storage.saved_message("unrelated-key", &unrelated).is_some());
+    assert!(storage.transcript("unrelated-voice", &unrelated).is_some());
+    assert_eq!(
+        storage
+            .identify_chat("", &["unrelated".into()], None)
+            .unwrap(),
+        unrelated
+    );
+}
+
+#[test]
+fn explicit_chat_repair_rejects_unrelated_addresses_rules_and_previous_identity() {
+    let fixture = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open(fixture.path().to_path_buf()).unwrap();
+    storage
+        .identify_chat("one@lid", &["one".into()], None)
+        .unwrap();
+    storage
+        .identify_chat("two@lid", &["two".into()], None)
+        .unwrap();
+    assert!(
+        storage
+            .repair_chat("", &["one".into(), "two".into()], None)
+            .is_err()
+    );
+    let first = storage.identify_chat("", &["first".into()], None).unwrap();
+    let second = storage.identify_chat("", &["second".into()], None).unwrap();
+    let joined = vec!["first".into(), "second".into()];
+    assert!(
+        storage
+            .repair_chat("", &joined, Some("chat:unrelated"))
+            .is_err()
+    );
+    storage.set_rules(&first, "Use tú.").unwrap();
+    storage.set_rules(&second, "Use usted.").unwrap();
+    let settings = serde_json::to_value(&storage.settings).unwrap();
+    assert!(storage.repair_chat("", &joined, None).is_err());
+    assert_eq!(serde_json::to_value(&storage.settings).unwrap(), settings);
+    assert!(storage.settings.conversation_aliases.is_empty());
+    assert!(storage.identify_chat("", &joined, None).is_err());
+}
+
+#[test]
+fn repair_keeps_rule_bearing_cache_namespace_and_restores_saved_history_from_both_ids() {
+    let fixture = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open(fixture.path().to_path_buf()).unwrap();
+    let first = storage.identify_chat("", &["first".into()], None).unwrap();
+    let second = storage.identify_chat("", &["second".into()], None).unwrap();
+    storage.set_enabled(&first, true).unwrap();
+    storage.set_rules(&second, "Use usted.").unwrap();
+    let preferences = TranslationPreferences::default();
+    let first_request = reading_request(&first, "first", "Hola");
+    let second_request = reading_request(&second, "second", "Adiós");
+    storage
+        .save_message(
+            crate::translation::saved_key(&first_request, &preferences),
+            &first,
+            "Hello".into(),
+        )
+        .unwrap();
+    let first_cache =
+        crate::translation::cache_key("account", "model", &first_request, "", &preferences, 0);
+    let second_cache = crate::translation::cache_key(
+        "account",
+        "model",
+        &second_request,
+        "Use usted.",
+        &preferences,
+        0,
+    );
+    storage
+        .cache_for_chat(first_cache.clone(), "Hello".into(), &first)
+        .unwrap();
+    storage
+        .cache_for_chat(second_cache, "Goodbye".into(), &second)
+        .unwrap();
+    let canonical = storage
+        .repair_chat("", &["first".into(), "second".into()], None)
+        .unwrap();
+    assert_eq!(canonical, second);
+    assert!(storage.enabled(&canonical));
+    assert_eq!(storage.preferences(&canonical).rules, "Use usted.");
+    let first_request = crate::protocol::TranslationRequest {
+        conversation: canonical.clone(),
+        ..first_request
+    };
+    assert_eq!(
+        storage
+            .saved_message_for(&first_request, &preferences)
+            .as_deref(),
+        Some("Hello")
+    );
+    assert_eq!(
+        storage
+            .cached_for_request(
+                "account",
+                "model",
+                &second_request,
+                "Use usted.",
+                &preferences,
+                0
+            )
+            .as_deref(),
+        Some("Goodbye")
+    );
+    assert!(
+        storage
+            .cached_for_request(
+                "account",
+                "model",
+                &first_request,
+                "Use usted.",
+                &preferences,
+                0
+            )
+            .is_none(),
+        "changed effective rules must recompute a reply cache"
+    );
+    assert_eq!(
+        storage.cached(&first_cache).as_deref(),
+        Some("Hello"),
+        "the original cache bytes remain available"
+    );
+}
+
+#[test]
+fn failed_identity_persistence_rolls_back_in_memory_repair_and_new_anchors() {
+    let fixture = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open(fixture.path().to_path_buf()).unwrap();
+    storage.identify_chat("", &["first".into()], None).unwrap();
+    storage.identify_chat("", &["second".into()], None).unwrap();
+    let settings = serde_json::to_value(&storage.settings).unwrap();
+    let path = fixture.path().join("settings.json");
+    fs::remove_file(&path).unwrap();
+    fs::create_dir(&path).unwrap();
+    assert!(
+        storage
+            .repair_chat("", &["first".into(), "second".into()], None)
+            .is_err()
+    );
+    assert_eq!(serde_json::to_value(&storage.settings).unwrap(), settings);
+    assert!(storage.identify_chat("", &["new".into()], None).is_err());
+    assert_eq!(serde_json::to_value(&storage.settings).unwrap(), settings);
+}
+
+#[test]
+fn further_repair_uses_current_preferences_and_flattens_existing_aliases() {
+    let fixture = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open(fixture.path().to_path_buf()).unwrap();
+    let first = storage.identify_chat("", &["first".into()], None).unwrap();
+    let second = storage.identify_chat("", &["second".into()], None).unwrap();
+    storage.set_enabled(&first, true).unwrap();
+    storage.set_enabled(&second, true).unwrap();
+    storage.set_rules(&first, "Use tú.").unwrap();
+    storage.set_rules(&second, "Use tú.").unwrap();
+    let canonical = storage
+        .repair_chat("", &["first".into(), "second".into()], None)
+        .unwrap();
+    storage.set_enabled(&canonical, false).unwrap();
+    storage.set_rules(&canonical, "Use usted.").unwrap();
+    let third = storage.identify_chat("", &["third".into()], None).unwrap();
+    let canonical = storage
+        .repair_chat("", &["second".into(), "third".into()], None)
+        .unwrap();
+    assert_eq!(storage.conversation_ids(&canonical).len(), 3);
+    assert!(
+        !storage.enabled(&first),
+        "stale alias opt-ins must not reenable a chat"
+    );
+    assert_eq!(storage.preferences(&third).rules, "Use usted.");
+    let mut storage = Storage::open(fixture.path().to_path_buf()).unwrap();
+    assert_eq!(
+        storage
+            .identify_chat(
+                "",
+                &["first".into(), "second".into(), "third".into()],
+                Some(&first)
+            )
+            .unwrap(),
+        canonical
+    );
+    assert_eq!(storage.preferences(&second).rules, "Use usted.");
+}
 #[test]
 fn settings_cache_and_host_survive_restart() {
     let fixture = tempfile::tempdir().unwrap();

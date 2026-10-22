@@ -183,6 +183,11 @@ pub enum NativeCommand {
     ClearChatCache {
         view_id: String,
     },
+    RepairChat {
+        view_id: String,
+        sequence: u64,
+        message_ids: Vec<String>,
+    },
     TranslationPreferences {
         preferences: TranslationPreferences,
     },
@@ -228,6 +233,20 @@ pub fn parse_native(payload: &str) -> Result<NativeCommand> {
             *region = language.region;
         }
         NativeCommand::ClearChatCache { view_id } => bounded_id(view_id)?,
+        NativeCommand::RepairChat {
+            view_id,
+            message_ids,
+            ..
+        } => {
+            bounded_id(view_id)?;
+            ensure!(
+                !message_ids.is_empty() && message_ids.len() <= 64,
+                "Invalid chat repair snapshot"
+            );
+            for id in message_ids {
+                bounded_id(id)?;
+            }
+        }
         NativeCommand::Enable { view_id, .. } if !view_id.is_empty() => bounded_id(view_id)?,
         NativeCommand::Account { client_id } => bounded_id(client_id)?,
         NativeCommand::Model { slug } | NativeCommand::Reasoning { slug, .. } => bounded_id(slug)?,

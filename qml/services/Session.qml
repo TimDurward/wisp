@@ -63,7 +63,7 @@ QtObject {
         if (state.chat_detection === "unsupported_messages")
             return "Wisp could not read this chat. Reload WhatsApp to retry.";
         if (state.chat_detection === "ambiguous")
-            return "Wisp could not identify this chat. Reload WhatsApp to retry.";
+            return state.can_repair_chat ? "Wisp lost track of this chat. Reconnect it to restore your saved translations." : "Wisp could not identify this chat. Reload WhatsApp to retry.";
         if (state.chat_detection === "waiting_for_messages")
             return "Waiting for WhatsApp to load this chat…";
         if (!hasChat)

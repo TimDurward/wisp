@@ -133,6 +133,58 @@ private Q_SLOTS:
         auto* settings = shell->findChild<QQuickItem*>("settingsButton");
         QVERIFY(translation && settings);
         QCOMPARE(settings->property("text").toString(), QStringLiteral("App settings"));
+        auto* repair = shell->findChild<QQuickItem*>("repairChatButton");
+        auto* dialog = shell->findChild<QObject*>("chatRepairDialog");
+        auto* confirm = shell->findChild<QQuickItem*>("confirmRepairChatButton");
+        QVERIFY(repair && dialog && confirm);
+        QVERIFY(!repair->isVisible());
+        const auto updateState = [shell](const QVariantMap& fields) {
+            return QMetaObject::invokeMethod(shell, "updateFixtureState", Q_ARG(QVariant, fields));
+        };
+        QVERIFY(updateState({{"conversation", ""},
+                             {"conversation_id", ""},
+                             {"chat_detection", "ambiguous"},
+                             {"can_repair_chat", true},
+                             {"repair_title", "Fixture contact"},
+                             {"active_sequence", 7}}));
+        QTRY_VERIFY(repair->isVisible() && repair->isEnabled());
+        repair->forceActiveFocus();
+        QTest::keyClick(shell, Qt::Key_Space);
+        QTRY_VERIFY(dialog->property("visible").toBool());
+        QCOMPARE(dialog->property("targetTitle").toString(), QStringLiteral("Fixture contact"));
+        QTRY_VERIFY(confirm->isVisible() && confirm->isEnabled());
+        QCOMPARE(confirm->property("text").toString(),
+                 QStringLiteral("Reconnect and keep translations"));
+        QQuickItem* cancel = nullptr;
+        bool titleShown = false;
+        for (auto* item : dialog->findChildren<QQuickItem*>()) {
+            const auto text = item->property("text").toString();
+            titleShown |= item->isVisible() && text == QStringLiteral("Fixture contact");
+            if (text == QStringLiteral("Cancel") &&
+                item->metaObject()->indexOfSignal("clicked()") >= 0) {
+                cancel = item;
+            }
+        }
+        QVERIFY(titleShown && cancel);
+        // A same-view message update and a new chat both invalidate the snapshot
+        // captured when the user opened the repair dialog.
+        QVERIFY(updateState({{"active_sequence", 8}}));
+        QTRY_VERIFY(!confirm->isEnabled());
+        QVERIFY(updateState({{"active_sequence", 7}}));
+        QTRY_VERIFY(confirm->isEnabled());
+        QVERIFY(updateState({{"view_id", "another-view"}}));
+        QTRY_VERIFY(!confirm->isEnabled());
+        QCOMPARE(shell->property("fixtureCommandCount").toInt(), 0);
+        cancel->forceActiveFocus();
+        QTest::keyClick(shell, Qt::Key_Space);
+        QTRY_VERIFY(!dialog->property("visible").toBool());
+        QCOMPARE(shell->property("fixtureCommandCount").toInt(), 0);
+        QVERIFY(updateState({{"conversation", "Contact"},
+                             {"conversation_id", "chat"},
+                             {"view_id", "view"},
+                             {"chat_detection", "ready"},
+                             {"can_repair_chat", false}}));
+        QTRY_VERIFY(!repair->isVisible());
         for (const QString& name :
              {QStringLiteral("languages"), QStringLiteral("voice"), QStringLiteral("reading"),
               QStringLiteral("defaults"), QStringLiteral("account"), QStringLiteral("rules")}) {

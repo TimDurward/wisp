@@ -53,7 +53,7 @@ SK.ApplicationWindow {
     Binding {
         target: window.desktop
         property: "focusShortcutEnabled"
-        value: !appSession.starting && (appSession.hasChat || appSession.focusChat) && !settings.visible && !rules.visible && !welcome.visible
+        value: !appSession.starting && (appSession.hasChat || appSession.focusChat) && !settings.visible && !rules.visible && !welcome.visible && !chatRepair.visible
     }
     Connections {
         target: appSession
@@ -168,8 +168,15 @@ SK.ApplicationWindow {
                     font.pixelSize: 12
                 }
                 SK.ToolButton {
+                    objectName: "repairChatButton"
+                    visible: !!appSession.state.can_repair_chat
+                    text: "Reconnect chat"
+                    enabled: !browser.loading
+                    onClicked: chatRepair.openForCurrent()
+                }
+                SK.ToolButton {
                     objectName: "reloadWhatsAppButton"
-                    visible: !window.desktop.notice
+                    visible: !window.desktop.notice && !appSession.state.can_repair_chat
                     enabled: !browser.loading
                     text: "Reload WhatsApp"
                     onClicked: browser.reload()
@@ -196,7 +203,7 @@ SK.ApplicationWindow {
     DraftEditor {
         desktop: window.desktop
         browser: browser
-        blocked: settings.visible || rules.visible || welcome.visible
+        blocked: settings.visible || rules.visible || welcome.visible || chatRepair.visible
     }
 
     SettingsDialog {
@@ -213,6 +220,97 @@ SK.ApplicationWindow {
         anchorItem: appHeader.translationAnchor
         onLanguagesRequested: settings.openPage(0)
         onAccountRequested: settings.openPage(4)
+    }
+    SK.Popup {
+        id: chatRepair
+        objectName: "chatRepairDialog"
+        parent: window.contentItem
+        anchors.centerIn: parent
+        width: Math.min(440, parent.width - 32)
+        padding: 24
+        modal: true
+        property string targetView: ""
+        property string targetTitle: ""
+        property double targetSequence: 0
+        property string error: ""
+        property bool busy: false
+        readonly property bool current: !!appSession.state.can_repair_chat && targetView === appSession.state.view_id && targetSequence === appSession.state.active_sequence
+        function openForCurrent() {
+            targetView = appSession.state.view_id;
+            targetTitle = appSession.state.repair_title;
+            targetSequence = appSession.state.active_sequence;
+            error = "";
+            busy = false;
+            open();
+        }
+        function repair() {
+            if (!current || busy || !window.desktop.isWhatsApp(browser.url))
+                return;
+            busy = true;
+            const view = targetView;
+            const sequence = targetSequence;
+            browser.runJavaScript("globalThis.__wispChatRepair?.(" + JSON.stringify(view) + ")", WebEngineScript.ApplicationWorld, snapshot => {
+                busy = false;
+                if (!chatRepair.visible || !chatRepair.current || !snapshot || snapshot.view_id !== view) {
+                    error = "The chat changed. Close this panel and try again.";
+                    return;
+                }
+                appSession.command("repair_chat", {
+                    view_id: view,
+                    sequence: sequence,
+                    message_ids: snapshot.message_ids
+                });
+                chatRepair.close();
+            });
+        }
+        contentItem: ColumnLayout {
+            spacing: 16
+            Text {
+                text: "Reconnect this chat"
+                color: Tokens.ink
+                font.pixelSize: 20
+                font.weight: Font.DemiBold
+                Layout.fillWidth: true
+            }
+            Text {
+                text: chatRepair.targetTitle
+                textFormat: Text.PlainText
+                color: Tokens.ink
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Text {
+                text: "Wisp stored parts of this conversation separately. Reconnect them to make your saved translations available together. Continue only if the open WhatsApp conversation is the chat shown above."
+                textFormat: Text.PlainText
+                color: Tokens.muted
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+                lineHeight: 1.4
+                Layout.fillWidth: true
+            }
+            Text {
+                visible: !chatRepair.current || !!chatRepair.error
+                text: chatRepair.error || "The chat changed. Close this panel and try again."
+                color: Tokens.warning
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                SK.Button {
+                    text: "Cancel"
+                    onClicked: chatRepair.close()
+                }
+                SK.Button {
+                    objectName: "confirmRepairChatButton"
+                    text: "Reconnect and keep translations"
+                    enabled: chatRepair.current && !chatRepair.busy
+                    onClicked: chatRepair.repair()
+                }
+            }
+        }
     }
     SK.Popup {
         id: welcome

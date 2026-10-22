@@ -11,19 +11,46 @@ pub fn message_hash(id: &str) -> String {
     hash(bare.unwrap_or(id))
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct ConversationAnchor {
     conversation: String,
     seen_at: u64,
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct MessageAnchors {
     entries: BTreeMap<String, ConversationAnchor>,
 }
 
 impl MessageAnchors {
+    pub fn candidates(&self, messages: &[String]) -> BTreeSet<String> {
+        messages
+            .iter()
+            .filter_map(|id| self.entries.get(&message_hash(id)))
+            .map(|anchor| anchor.conversation.clone())
+            .collect()
+    }
+
+    // Called only after a native, current-view repair has validated the exact
+    // candidate set. A normal page observation must never join identities.
+    pub fn repair(&mut self, candidates: &BTreeSet<String>, canonical: &str, messages: &[String]) {
+        for anchor in self.entries.values_mut() {
+            if candidates.contains(&anchor.conversation) {
+                anchor.conversation = canonical.to_owned();
+            }
+        }
+        for id in messages {
+            self.entries.insert(
+                message_hash(id),
+                ConversationAnchor {
+                    conversation: canonical.to_owned(),
+                    seen_at: now(),
+                },
+            );
+        }
+    }
+
     // Modern WhatsApp DOM IDs identify messages, not their chat. Link overlapping
     // message records to a native UUID; display names never participate in identity.
     pub fn identify(
@@ -32,11 +59,7 @@ impl MessageAnchors {
         messages: &[String],
         previous: Option<&str>,
     ) -> Result<String> {
-        let known: BTreeSet<String> = messages
-            .iter()
-            .filter_map(|id| self.entries.get(&message_hash(id)))
-            .map(|anchor| anchor.conversation.clone())
-            .collect();
+        let known = self.candidates(messages);
         ensure!(
             known.len() <= 1,
             "Message records belong to different chats"

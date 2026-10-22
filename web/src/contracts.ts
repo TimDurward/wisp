@@ -286,6 +286,7 @@ declare global {
     __wispDiagnostics?: boolean;
     __wispReadLayout?: () => string;
     __wispReadStructure?: () => string;
+    __wispChatRepair?: (viewId: string) => { view_id: string; message_ids: string[] } | null;
     __wispLayout?: { preview: (value: boolean) => void; cancel: (value: boolean) => void };
     __wispDraftEditing?: {
       begin: (edit: NativeEdit) => boolean;

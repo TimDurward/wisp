@@ -202,6 +202,20 @@ test('a trusted history scroll retains the view through a loading gap and disjoi
   await page.locator('.message-in').hover();
   await page.mouse.wheel(0, -400);
   await page.evaluate(() => document.querySelector('[data-id]')?.remove());
+  // Let a scan observe the loading gap: inserting immediately would only test
+  // the two nonempty snapshots and miss losing all message anchors in between.
+  await page.waitForTimeout(250);
+  expect(
+    await page.evaluate(() =>
+      (window as FixtureWindow).fixtureRequests.findLast(
+        (request) => request.type === 'active_conversation',
+      ),
+    ),
+  ).toMatchObject({ view_id: view, detection: 'ready' });
+  await page.evaluate(() => {
+    const header = document.querySelector('header')!;
+    header.replaceWith(header.cloneNode(true));
+  });
   await page.evaluate(() =>
     document
       .querySelector('footer')
@@ -225,6 +239,70 @@ test('a trusted history scroll retains the view through a loading gap and disjoi
         )?.view_id,
     ),
   ).toBe(view);
+});
+
+test('trusted keyboard history keeps the chat while navigation cancels history continuity', async ({
+  page,
+}) => {
+  await openChat(page, true);
+  const view = await page.evaluate(
+    () =>
+      (window as FixtureWindow).fixtureRequests.findLast(
+        (request) => request.type === 'active_conversation',
+      )?.view_id,
+  );
+  await page.locator('#main').evaluate((main) => main.setAttribute('tabindex', '-1'));
+  await page.locator('#main').press('PageUp');
+  await page.evaluate(() => {
+    document
+      .querySelector('[data-id]')
+      ?.setAttribute('data-id', '3EB0B123456789ABCDEF0123456789AB');
+    const header = document.querySelector('header')!;
+    header.replaceWith(header.cloneNode(true));
+  });
+  await page.waitForFunction(() =>
+    (window as FixtureWindow).fixtureRequests.some(
+      (request) =>
+        request.type === 'active_conversation' &&
+        request.message_ids.includes('3EB0B123456789ABCDEF0123456789AB'),
+    ),
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        (window as FixtureWindow).fixtureRequests.findLast(
+          (request) => request.type === 'active_conversation',
+        )?.view_id,
+    ),
+  ).toBe(view);
+  await page.evaluate(() => {
+    const contact = document.createElement('button');
+    contact.textContent = 'Other same-name contact';
+    contact.style.cssText = 'position:fixed;top:0;right:0';
+    document.body.append(contact);
+  });
+  await page.getByRole('button', { name: 'Other same-name contact' }).click();
+  await page.evaluate(() =>
+    document
+      .querySelector('[data-id]')
+      ?.setAttribute('data-id', '3EB0C123456789ABCDEF0123456789AB'),
+  );
+  await page.waitForFunction(() =>
+    (window as FixtureWindow).fixtureRequests.some(
+      (request) =>
+        request.type === 'active_conversation' &&
+        request.message_ids.includes('3EB0C123456789ABCDEF0123456789AB'),
+    ),
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        (window as FixtureWindow).fixtureRequests.findLast(
+          (request) => request.type === 'active_conversation',
+        )?.view_id,
+    ),
+  ).not.toBe(view);
+  await expect(page.locator('.wisp-preview-button')).toHaveCount(0);
 });
 
 for (const sizing of ['border-box', 'content-box']) {

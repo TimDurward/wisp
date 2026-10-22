@@ -33,16 +33,20 @@ impl Engine {
                         {
                             return None;
                         }
-                        let key = translation::history_key(
-                            &conversation,
-                            &message.message_id,
-                            message.direction,
-                            &message.text,
-                            &state.storage.settings.translation_preferences,
-                        );
                         state
                             .storage
-                            .saved_message(&key, &conversation)
+                            .conversation_ids(&conversation)
+                            .iter()
+                            .find_map(|id| {
+                                let key = translation::history_key(
+                                    id,
+                                    &message.message_id,
+                                    message.direction,
+                                    &message.text,
+                                    &state.storage.settings.translation_preferences,
+                                );
+                                state.storage.saved_message(&key, &conversation)
+                            })
                             .map(|text| json!({"message_id":message.message_id,"text":text}))
                     })
                     .collect();
@@ -63,6 +67,8 @@ impl Engine {
                 }
                 state.active_sequence = sequence;
                 state.message_ids = message_ids.clone();
+                state.peer = conversation.clone();
+                state.can_repair_chat = false;
                 state.detection = detection;
                 let conversation = if !message_ids.is_empty()
                     || (matches!(detection, ConversationDetection::Empty) && !view_id.is_empty())
@@ -77,6 +83,12 @@ impl Engine {
                         Ok(id) => id,
                         Err(error) => {
                             self.error(error);
+                            // Only a concrete conflict between saved message anchors can be
+                            // repaired. Unsupported/ambiguous DOM snapshots still fail closed.
+                            state.can_repair_chat =
+                                matches!(detection, ConversationDetection::Ready)
+                                    && !view_id.is_empty()
+                                    && state.storage.identity_candidates(&message_ids).len() > 1;
                             state.detection = ConversationDetection::Ambiguous;
                             String::new()
                         }
@@ -95,11 +107,7 @@ impl Engine {
                     state.conversation = conversation;
                 }
                 state.view_id = view_id;
-                state.title = if state.conversation.is_empty() {
-                    String::new()
-                } else {
-                    title
-                };
+                state.title = title;
                 drop(state);
                 self.config().await;
                 self.status().await;

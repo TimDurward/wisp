@@ -1,5 +1,92 @@
 use super::*;
 #[tokio::test]
+async fn chat_repair_is_native_view_bound_and_restores_both_saved_histories() {
+    let fixture = tempfile::tempdir().unwrap();
+    let events = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let received = events.clone();
+    let engine = Engine::new(
+        fixture.path().to_path_buf(),
+        Arc::new(move |_, event| received.lock().unwrap().push(event)),
+    )
+    .unwrap();
+    let a = "3EB0A123456789ABCDEF0123456789AB";
+    let b = "3EB0B123456789ABCDEF0123456789AB";
+    {
+        let mut state = engine.state.lock().await;
+        for (id, source, translated) in [(a, "Hola", "Hello"), (b, "Mañana", "Tomorrow")] {
+            let chat = state
+                .storage
+                .identify_chat("", &[id.to_owned()], None)
+                .unwrap();
+            state.storage.set_enabled(&chat, true).unwrap();
+            let key = translation::history_key(
+                &chat,
+                id,
+                Direction::Incoming,
+                source,
+                &state.storage.settings.translation_preferences,
+            );
+            state
+                .storage
+                .save_message(key, &chat, translated.to_owned())
+                .unwrap();
+        }
+    }
+    let observe = json!({"type":"active_conversation","conversation":"","title":"Fixture contact","detection":"ready","view_id":"current","message_ids":[a,b]}).to_string();
+    engine.clone().page_json(observe.clone(), 10).await;
+    assert!(engine.state.lock().await.can_repair_chat);
+    assert!(engine.state.lock().await.conversation.is_empty());
+    let repair = |view, sequence, ids: Vec<&str>| {
+        json!({"type":"repair_chat","view_id":view,"sequence":sequence,"message_ids":ids})
+            .to_string()
+    };
+    for invalid in [
+        repair("previous", 10, vec![a, b]),
+        repair("current", 9, vec![a, b]),
+        repair("current", 10, vec![a]),
+    ] {
+        assert!(engine.native_inner(&invalid).await.is_err());
+    }
+    // The webpage channel cannot authorize a repair, even with a valid snapshot.
+    assert!(crate::protocol::parse_page(&repair("current", 10, vec![a, b])).is_err());
+    assert!(engine.state.lock().await.conversation.is_empty());
+    engine
+        .native_inner(&repair("current", 10, vec![a, b]))
+        .await
+        .unwrap();
+    let conversation = engine.state.lock().await.conversation.clone();
+    assert!(!conversation.is_empty());
+    assert!(!engine.state.lock().await.can_repair_chat);
+    assert!(
+        engine
+            .native_inner(&repair("current", 10, vec![a, b]))
+            .await
+            .is_err()
+    );
+    engine.clone().page_json(json!({"type":"saved_messages","request_id":"restored","conversation":conversation,"view_id":"current","messages":[
+        {"message_id":a,"direction":"incoming","text":"Hola"},
+        {"message_id":b,"direction":"incoming","text":"Mañana"}
+    ]}).to_string(), 12).await;
+    let restored = events
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|event| event["request_id"] == "restored")
+        .cloned()
+        .unwrap();
+    assert_eq!(
+        restored["items"],
+        json!([
+            {"message_id":a,"text":"Hello"}, {"message_id":b,"text":"Tomorrow"}
+        ])
+    );
+    let reopened = Engine::new(fixture.path().to_path_buf(), Arc::new(|_, _| {})).unwrap();
+    reopened.clone().page_json(observe, 1).await;
+    assert_eq!(reopened.state.lock().await.conversation, conversation);
+    assert!(!reopened.state.lock().await.can_repair_chat);
+}
+
+#[tokio::test]
 async fn saved_voice_restores_raw_and_translated_text_without_a_model_or_account() {
     let fixture = tempfile::tempdir().unwrap();
     let events = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
